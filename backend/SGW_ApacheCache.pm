@@ -487,6 +487,28 @@ EOF
         $conf .= "Header always set X-Imscp-Bypass \"yes\" env=imscp_nocache\n";
     }
 
+    my @deny = $self->_splitList( $row->{'deny_paths'} );
+
+    if ( @deny ) {
+        # Matched against the URL path with no anchor, so an entry such as
+        # xmlrpc.php also covers /xmlrpc.php and //xmlrpc.php, which is how the
+        # endpoint is usually probed.
+        #
+        # <LocationMatch> rather than a bypass rule or mod_rewrite: Location
+        # sections merge last, so this wins over whatever the vhost's
+        # <Directory> block and the customer's .htaccess grant, and access
+        # control runs before both the cache and the per-directory rewrite that
+        # turns a pretty permalink into /index.php.
+        my $pattern = join '|', map { quotemeta } @{ $self->_unique( \@deny ) };
+        $conf .= <<"EOF";
+
+# --- Requests refused outright ---
+<LocationMatch "(?:$pattern)">
+    Require all denied
+</LocationMatch>
+EOF
+    }
+
     if ( $row->{'static_expires'} ) {
         $conf .= <<'EOF';
 

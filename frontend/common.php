@@ -116,6 +116,9 @@ function defaults()
         'max_file_size'     => 1048576,
         'bypass_cookies'    => '',
         'bypass_paths'      => '',
+        // WordPress's XML-RPC endpoint is the one path that is attacked on
+        // every site and wanted on almost none, so it is denied out of the box.
+        'deny_paths'        => 'xmlrpc.php',
         'status'            => 'disabled',
         'state'             => ''
     );
@@ -152,15 +155,16 @@ function getOrCreateRow(array $domain, $adminId)
                 admin_id, domain_type, domain_id, domain_name, enabled,
                 wordpress_mode, static_expires, debug_headers, ignore_no_lastmod,
                 default_expire, max_expire, max_file_size, bypass_cookies,
-                bypass_paths, status, state
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                bypass_paths, deny_paths, status, state
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ',
         array(
             $row['admin_id'], $row['domain_type'], $row['domain_id'],
             $row['domain_name'], $row['enabled'], $row['wordpress_mode'],
             $row['static_expires'], $row['debug_headers'], $row['ignore_no_lastmod'],
             $row['default_expire'], $row['max_expire'], $row['max_file_size'],
-            $row['bypass_cookies'], $row['bypass_paths'], $row['status'], $row['state']
+            $row['bypass_cookies'], $row['bypass_paths'], $row['deny_paths'],
+            $row['status'], $row['state']
         )
     );
 

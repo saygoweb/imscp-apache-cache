@@ -18,13 +18,17 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+// Paths refused outright rather than merely kept out of the cache. Existing
+// rows get the same default a new one would, since xmlrpc.php is a liability
+// on every WordPress site and none of them asked to keep it reachable.
 return array(
-    'author'      => 'Cambell Prince',
-    'email'       => 'cambell.prince@gmail.com',
-    'version'     => '0.2.0',
-    'require_api' => '1.5.1',
-    'date'        => '2026-09-03',
-    'name'        => 'SGW_ApacheCache',
-    'desc'        => 'Per-domain Apache disk cache (mod_cache_disk), with a WordPress mode.',
-    'url'         => 'https://github.com/saygoweb/imscp-apache-cache'
+    'up'   => "
+        ALTER TABLE `apache_cache`
+        ADD `deny_paths` TEXT CHARACTER SET utf8 COLLATE utf8_unicode_ci AFTER `bypass_paths`;
+
+        UPDATE `apache_cache` SET `deny_paths` = 'xmlrpc.php';
+    ",
+    'down' => "
+        ALTER TABLE `apache_cache` DROP COLUMN `deny_paths`;
+    "
 );

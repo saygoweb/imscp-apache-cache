@@ -28,6 +28,11 @@ probe() {
         END                { print cache, bypass }'
 }
 
+# Prints the response status alone, for a request the cache never sees.
+status() {
+    curl -sS -o /dev/null -w '%{http_code}' -H "$H" "$@"
+}
+
 check() {
     want=$1; got=$2; what=$3
     if [ "$got" = "$want" ]; then
@@ -76,6 +81,13 @@ check "MISS bypass" "$(probe "$BASE/wp-admin/")"    "wp-admin bypasses"
 check "MISS bypass" "$(probe "$BASE/my-account")"   "virtual bypass path bypasses"
 check "MISS bypass" "$(probe -H 'Cookie: my_session=1' "$BASE/hello-world/")" \
     "custom bypass cookie bypasses"
+
+# A denied path is refused by an access check, which runs before the cache and
+# before the per-directory rewrite. The match is on any part of the path, so the
+# doubled-slash form scanners use is refused as well.
+check "403" "$(status "$BASE/xmlrpc.php")"  "xmlrpc.php is refused"
+check "403" "$(status "$BASE//xmlrpc.php")" "//xmlrpc.php is refused"
+check "200" "$(status "$BASE/hello-world/")" "an undenied path is still served"
 
 # Last: a POST invalidates the cached entry for its URL, so anything checked
 # after this would see a cold cache.

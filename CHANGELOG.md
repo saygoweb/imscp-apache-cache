@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+Added deny paths e.g. for xmlrpc.php
+
+* Per-domain list of paths refused outright with 403 Forbidden, matched on any
+  part of the URL path and defaulting to `xmlrpc.php`.
+
 ## 0.1.0 (unreleased)
 
 First working version.
