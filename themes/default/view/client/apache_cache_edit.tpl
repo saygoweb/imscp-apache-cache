@@ -69,6 +69,13 @@
             </td>
             <td><textarea name="bypass_paths" id="bypass_paths" rows="4" cols="40">{BYPASS_PATHS}</textarea></td>
         </tr>
+        <tr>
+            <td>
+                <label for="deny_paths">{TR_DENY_PATHS}</label>
+                <span class="icon i_help" title="{TR_DENY_PATHS_HELP}">?</span>
+            </td>
+            <td><textarea name="deny_paths" id="deny_paths" rows="2" cols="40">{DENY_PATHS}</textarea></td>
+        </tr>
         </tbody>
     </table>
 

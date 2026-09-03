@@ -61,7 +61,9 @@ function readPostedSettings()
         'bypass_cookies'    => isset($_POST['bypass_cookies'])
             ? clean_input($_POST['bypass_cookies']) : '',
         'bypass_paths'      => isset($_POST['bypass_paths'])
-            ? clean_input($_POST['bypass_paths']) : ''
+            ? clean_input($_POST['bypass_paths']) : '',
+        'deny_paths'        => isset($_POST['deny_paths'])
+            ? clean_input($_POST['deny_paths']) : ''
     );
 }
 
@@ -91,7 +93,7 @@ function saveSettings(array $domain, $adminId)
                 enabled = ?, wordpress_mode = ?, static_expires = ?,
                 debug_headers = ?, ignore_no_lastmod = ?, default_expire = ?,
                 max_expire = ?, max_file_size = ?, bypass_cookies = ?,
-                bypass_paths = ?, status = ?, state = ?
+                bypass_paths = ?, deny_paths = ?, status = ?, state = ?
             WHERE apache_cache_id = ?
         ',
         array(
@@ -99,6 +101,7 @@ function saveSettings(array $domain, $adminId)
             $settings['debug_headers'], $settings['ignore_no_lastmod'],
             $settings['default_expire'], $settings['max_expire'], $settings['max_file_size'],
             $settings['bypass_cookies'], $settings['bypass_paths'],
+            $settings['deny_paths'],
             $settings['enabled'] ? 'tochange' : 'todisable', '',
             $row['apache_cache_id']
         )
@@ -137,7 +140,8 @@ function generatePage($tpl, array $domain, array $row)
         'MAX_EXPIRE'            => tohtml($row['max_expire'], 'htmlAttr'),
         'MAX_FILE_SIZE'         => tohtml($row['max_file_size'], 'htmlAttr'),
         'BYPASS_COOKIES'        => tohtml($row['bypass_cookies']),
-        'BYPASS_PATHS'          => tohtml($row['bypass_paths'])
+        'BYPASS_PATHS'          => tohtml($row['bypass_paths']),
+        'DENY_PATHS'            => tohtml($row['deny_paths'])
     ));
 }
 
@@ -199,6 +203,8 @@ $tpl->assign(array(
     'TR_BYPASS_COOKIES_HELP'   => tr('One cookie name prefix per line. A request carrying any of them is neither served from nor stored in the cache.'),
     'TR_BYPASS_PATHS'          => tr('Additional paths never cached'),
     'TR_BYPASS_PATHS_HELP'     => tr('One URL path prefix per line, for example /my-account.'),
+    'TR_DENY_PATHS'            => tr('Paths refused outright'),
+    'TR_DENY_PATHS_HELP'       => tr('A comma separated list of URL path fragments, for example xmlrpc.php. Any request whose path contains one of them is refused with 403 Forbidden, before the cache is consulted. Matching is on any part of the path, so xmlrpc.php also covers //xmlrpc.php. This applies only while the cache is enabled for this domain. Leave empty to refuse nothing.'),
     'TR_UPDATE'                => tr('Update'),
     'TR_CANCEL'                => tr('Cancel')
 ));

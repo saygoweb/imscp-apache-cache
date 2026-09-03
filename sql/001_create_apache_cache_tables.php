@@ -39,6 +39,7 @@ return array(
             `max_file_size`     int(11) unsigned NOT NULL DEFAULT '1048576',
             `bypass_cookies`    text COLLATE utf8_unicode_ci,
             `bypass_paths`      text COLLATE utf8_unicode_ci,
+            `deny_paths`        text COLLATE utf8_unicode_ci,
             `status`            varchar(255) COLLATE utf8_unicode_ci NOT NULL,
             `state`             varchar(255) COLLATE utf8_unicode_ci NOT NULL DEFAULT '',
             PRIMARY KEY (`apache_cache_id`),

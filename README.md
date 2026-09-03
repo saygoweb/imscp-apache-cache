@@ -40,6 +40,7 @@ purge button, and an edit page carrying:
 | Default and maximum lifetime | How long a page is kept |
 | Largest response to cache | Responses above this are not stored |
 | Additional cookies / paths | Customer's own bypass lists |
+| Paths refused outright | Comma separated path fragments answered with 403 Forbidden instead of being served; `xmlrpc.php` by default |
 
 A reseller gets **Customers / Apache Cache**, which grants or withdraws the
 feature per customer and switches the cache on or off across all of a
@@ -48,8 +49,8 @@ that customer's domains, so the feature and its effects go away together.
 
 ## Why the configuration looks the way it does
 
-Four things about WordPress and Apache drive the whole design, and each was
-measured rather than assumed.
+A handful of things about WordPress and Apache drive the whole design, and each
+was measured rather than assumed.
 
 **WordPress HTML carries no freshness information.** No `Cache-Control`, no
 `Expires`, no `Last-Modified`, no `ETag`. Apache will not store such a response
@@ -83,6 +84,16 @@ out of the way with a `REDIRECT_` prefix. `CacheDisable /my-account` and
 `SetEnvIfExpr %{REQUEST_URI}` both silently stop working, while still appearing
 to work for `/wp-admin`, which is a real directory. Paths are therefore matched
 against `THE_REQUEST`, the original request line, which survives intact.
+
+**A refused path is refused, not merely uncached.** The deny list is a
+`<LocationMatch>` carrying `Require all denied`. Location sections merge after
+`<Directory>` blocks and after the customer's `.htaccess`, so the refusal wins
+over whatever those grant, and the access check runs before both the cache and
+the per-directory rewrite that turns a pretty permalink into `/index.php`. The
+pattern is unanchored, so `xmlrpc.php` also covers `/xmlrpc.php` and the
+`//xmlrpc.php` form scanners like to use. Entries are `quotemeta`-escaped, so a
+customer cannot smuggle a regex in. The snippet only exists while the cache is
+enabled for the domain, so the deny list goes away with it.
 
 ## Cache layout
 

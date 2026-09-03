@@ -11,6 +11,8 @@ First working version.
   WooCommerce or comment-author cookie out of the cache.
 * Per-domain cache lifetime, maximum response size and extra cookie/path
   bypass lists.
+* Per-domain list of paths refused outright with 403 Forbidden, matched on any
+  part of the URL path and defaulting to `xmlrpc.php`.
 * Per-domain purge.
 * Reseller page to grant or withdraw the feature per customer, and to switch
   the cache on or off across all of a customer's domains at once.

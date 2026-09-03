@@ -31,7 +31,8 @@ my %base = (
     static_expires    => 1,
     wordpress_mode    => 1,
     bypass_cookies    => '',
-    bypass_paths      => ''
+    bypass_paths      => '',
+    deny_paths        => 'xmlrpc.php'
 );
 
 my $conf = $plugin->_buildConf( { %base }, '/var/cache/apache2/imscp/example.com' );
@@ -74,16 +75,27 @@ like($conf, qr/REQUEST_METHOD/, 'non-GET methods bypass');
 like($conf, qr/QUERY_STRING/,  'searches and previews bypass');
 like($conf, qr/mod_expires/,   'static assets get a browser lifetime');
 
+# A denied path is refused before the cache is reached, which needs a section
+# that merges after the vhost's <Directory> block and the customer's .htaccess.
+like($unescaped, qr{^<LocationMatch "\(\?:[^"]*xmlrpc\.php[^"]*\">$}m,
+    'a denied path becomes a LocationMatch on any part of the path');
+like($conf, qr{^<LocationMatch[^\n]*\n\s+Require all denied\n</LocationMatch>$}m,
+    'the denied path is refused outright');
+# Unanchored, so the pattern covers /xmlrpc.php and //xmlrpc.php alike.
+unlike($conf, qr{<LocationMatch "\(\?:\^}, 'the deny pattern is not anchored');
+
 # WordPress mode off: only the customer's own entries remain.
 my $plain = $plugin->_buildConf(
     { %base, wordpress_mode => 0, static_expires => 0, debug_headers => 0,
-      bypass_cookies => "my_session\nother", bypass_paths => '/private' },
+      bypass_cookies => "my_session\nother", bypass_paths => '/private',
+      deny_paths => '' },
     '/tmp/c'
 );
 unlike($plain, qr/wp-admin/,       'no WordPress paths when the mode is off');
 unlike($plain, qr/wordpress_logged_in_/, 'no WordPress cookies when the mode is off');
 unlike($plain, qr/QUERY_STRING/,   'no search bypass when the mode is off');
 unlike($plain, qr/mod_expires/,    'no expiry block when static expiry is off');
+unlike($plain, qr/LocationMatch/,  'nothing is refused when the deny list is empty');
 unlike($plain, qr/CacheHeader/,    'no diagnostic headers when they are off');
 unlike($plain, qr/X-Imscp-Bypass/, 'no bypass header when diagnostics are off');
 like($plain, qr/my_session\|other/, 'custom cookies are kept');
@@ -91,10 +103,20 @@ like($plain, qr/private/,           'custom paths are kept');
 # Still non-GET, always.
 like($plain, qr/REQUEST_METHOD/,    'non-GET bypass is not optional');
 
+# A comma separated deny list, as the help text describes it.
+my $denies = $plugin->_buildConf(
+    { %base, wordpress_mode => 0, deny_paths => 'xmlrpc.php, /wp-json , xmlrpc.php' },
+    '/tmp/c'
+);
+like($denies, qr{\Q<LocationMatch "(?:xmlrpc\.php|\/wp\-json)">\E},
+    'a comma separated deny list is split, trimmed, escaped and deduplicated');
+
 # A cookie name is user supplied, so it must not be able to smuggle in a regex.
 my $meta = $plugin->_buildConf(
-    { %base, wordpress_mode => 0, bypass_cookies => 'a.*b' }, '/tmp/c'
+    { %base, wordpress_mode => 0, bypass_cookies => 'a.*b', deny_paths => 'c.*d' },
+    '/tmp/c'
 );
 like($meta, qr/\Qa\.\*b\E/, 'regex metacharacters in a cookie name are escaped');
+like($meta, qr/\Qc\.\*d\E/, 'regex metacharacters in a denied path are escaped');
 
 done_testing();
