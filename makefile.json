@@ -1,10 +1,22 @@
 {
     "variables": {
-        "name": "SGW_ApacheCache"
+        "name": "SGW_ApacheCache",
+        "sudo": "sudo",
+        "bump": "patch"
     },
     "clean": {
         "by": [
             "rm -f ./*.tgz"
+        ]
+    },
+    "test": {
+        "by": [
+            "cd test/backend && {{sudo}} perl all.t"
+        ]
+    },
+    "version": {
+        "by": [
+            "php tools/version.php {{bump}}"
         ]
     },
     "package": {
