@@ -289,7 +289,7 @@ function getResellerDomains($resellerId)
                     sa.subdomain_alias_status
                 FROM subdomain_alias AS sa
                 JOIN domain_aliasses AS a USING(alias_id)
-                JOIN domain USING(domain_id)
+                JOIN domain AS d USING(domain_id)
                 WHERE d.domain_admin_id IN (
                     SELECT admin_id FROM admin WHERE created_by = ? AND admin_type = 'user'
                 )
