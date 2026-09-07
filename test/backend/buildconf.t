@@ -45,6 +45,8 @@ like($conf, qr/^CacheQuickHandler\s+Off$/m,      'quick handler is off so bypass
 like($conf, qr/^CacheIgnoreNoLastMod On$/m,      'pages without validators are cacheable');
 like($conf, qr/^CacheIgnoreHeaders\s+Set-Cookie$/m, 'session cookies are never stored');
 like($conf, qr/^CacheDefaultExpire\s+300$/m,     'default lifetime is written through');
+like($conf, qr/^Header setifempty Cache-Control "public, max-age=0, s-maxage=300" env=!imscp_nocache$/m,
+    'WordPress pretty permalinks get explicit shared-cache freshness without forcing a browser HTML cache');
 
 my $migration = do { local $/; open my $fh, '<', abs_path('../../sql/002_add_deny_paths.php') or die $!; <$fh> };
 like($migration, qr/ADD\s+(?:COLUMN\s+)?IF\s+NOT\s+EXISTS\s+`?deny_paths`?/i,
@@ -104,6 +106,7 @@ my $plain = $plugin->_buildConf(
 unlike($plain, qr/wp-admin/,       'no WordPress paths when the mode is off');
 unlike($plain, qr/wordpress_logged_in_/, 'no WordPress cookies when the mode is off');
 unlike($plain, qr/QUERY_STRING/,   'no search bypass when the mode is off');
+unlike($plain, qr/s-maxage/,       'no synthetic shared-cache freshness when the mode is off');
 unlike($plain, qr/mod_expires/,    'no expiry block when static expiry is off');
 unlike($plain, qr/LocationMatch/,  'nothing is refused when the deny list is empty');
 unlike($plain, qr/CacheHeader/,    'no diagnostic headers when they are off');
