@@ -478,6 +478,7 @@ $tpl->assign(array(
     'TR_STATE'            => tr('State'),
     'TR_ACTION'           => tr('Action'),
     'TR_SELECT'           => tr('Select'),
+    'TR_SELECT_ALL'       => tr('Select all'),
     'TR_BULK_ACTION'      => tr('Bulk action'),
     'TR_BULK_APPLY'       => tr('Apply to selected'),
     'TR_UPDATE'           => tr('Update'),

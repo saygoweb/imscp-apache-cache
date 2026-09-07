@@ -2,17 +2,6 @@
 
 <form name="apache_cache_reseller" id="apache_cache_reseller" method="post"
       action="apache_cache.php" onsubmit="return confirmWithdraw(this);">
-    <div class="buttons">
-        <label for="bulk_action">{TR_BULK_ACTION}</label>
-        <select name="bulk_action" id="bulk_action">
-            <option value=""></option>
-            <option value="allow">{TR_ALLOW}</option>
-            <option value="enable">{TR_ENABLE}</option>
-            <option value="disable">{TR_DISABLE}</option>
-            <option value="withdraw">{TR_WITHDRAW}</option>
-        </select>
-        <input type="button" value="{TR_BULK_APPLY}" onclick="return applyBulkAction(this.form);">
-    </div>
 
     <!-- BDP: no_domains_block -->
     <div class="static_info">{NO_DOMAINS}</div>
@@ -22,7 +11,7 @@
     <table class="firstColFixed datatable">
         <thead>
         <tr>
-            <th>{TR_SELECT}</th>
+            <th><input type="checkbox" id="apache_cache_all" title="{TR_SELECT_ALL}"></th>
             <th>{TR_CUSTOMER}</th>
             <th>{TR_DOMAIN}</th>
             <th>{TR_ALLOWED}</th>
@@ -46,6 +35,18 @@
         </tbody>
     </table>
     <!-- EDP: domain_list -->
+
+    <div class="buttons">
+        <label for="bulk_action">{TR_BULK_ACTION}</label>
+        <select name="bulk_action" id="bulk_action">
+            <option value=""></option>
+            <option value="allow">{TR_ALLOW}</option>
+            <option value="enable">{TR_ENABLE}</option>
+            <option value="disable">{TR_DISABLE}</option>
+            <option value="withdraw">{TR_WITHDRAW}</option>
+        </select>
+        <input type="button" value="{TR_BULK_APPLY}" onclick="return applyBulkAction(this.form);">
+    </div>
 
     <div class="buttons">
         <input name="submit" type="submit" value="{TR_UPDATE}">
@@ -105,5 +106,15 @@ function confirmWithdraw(form) {
     }
 
     return true;
+}
+
+var selectAll = document.getElementById('apache_cache_all');
+if (selectAll) {
+    selectAll.addEventListener('change', function () {
+        var checkboxes = document.querySelectorAll('input[type="checkbox"][name^="bulk["]:not(:disabled)');
+        for (var i = 0; i < checkboxes.length; i++) {
+            checkboxes[i].checked = this.checked;
+        }
+    });
 }
 </script>
