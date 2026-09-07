@@ -22,9 +22,7 @@ namespace SGW_ApacheCache;
 
 use iMSCP\Event\EventAggregator;
 use iMSCP\Event\Events;
-use iMSCP\Plugin\SGW_ApacheCache\SGW_ApacheCache;
 use iMSCP\TemplateEngine;
-use PDO;
 
 require_once __DIR__ . '/../common.php';
 
@@ -433,7 +431,7 @@ $tpl->define_dynamic(array(
 ));
 $tpl->assign(array(
     'TR_PAGE_TITLE'       => tr('Reseller / Apache Cache'),
-    'TR_INTRO'            => tr('Manage Apache cache access and per-domain cache actions for your customers.'),
+    'TR_INTRO'            => tr('Manage Apache cache access and per-domain cache actions for your customers. Checkboxes help copy actions in bulk, while individual per-row actions determine what is actually submitted on Update.'),
     'TR_CUSTOMER'         => tr('Customer'),
     'TR_DOMAIN'           => tr('Domain'),
     'TR_DOMAIN_KIND'      => tr('Type'),
@@ -441,7 +439,6 @@ $tpl->assign(array(
     'TR_ENABLED'          => tr('Enabled'),
     'TR_STATE'            => tr('State'),
     'TR_ACTION'           => tr('Action'),
-    'TR_SELECT'           => tr('Select'),
     'TR_SELECT_ALL'       => tr('Select all'),
     'TR_BULK_ACTION'      => tr('Bulk action'),
     'TR_BULK_APPLY'       => tr('Apply to selected'),
@@ -451,7 +448,7 @@ $tpl->assign(array(
     'TR_DISABLE'          => tr('Disable'),
     'TR_WITHDRAW'         => tr('Withdraw'),
     'TR_WITHDRAW_CONFIRM' => tojs(tr('Withdrawing the feature also disables the cache on all of this customer\'s domains. Continue?'))
-)); 
+));
 
 generateNavigation($tpl);
 generatePage($tpl, $resellerId);

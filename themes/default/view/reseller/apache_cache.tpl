@@ -39,7 +39,7 @@
 
     <div class="buttons">
         <label for="bulk_action">{TR_BULK_ACTION}</label>
-        <select name="bulk_action" id="bulk_action">
+        <select id="bulk_action">
             <option value=""></option>
             <option value="allow">{TR_ALLOW}</option>
             <option value="enable">{TR_ENABLE}</option>
@@ -65,7 +65,8 @@ function getRow(node) {
 }
 
 function applyBulkAction(form) {
-    var action = form.elements.bulk_action.value;
+    var bulkSelect = document.getElementById('bulk_action');
+    var action = bulkSelect ? bulkSelect.value : '';
 
     if (!action) {
         return false;
