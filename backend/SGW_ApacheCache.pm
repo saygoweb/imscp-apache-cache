@@ -399,6 +399,9 @@ sub _buildConf
 # the next time the domain's cache settings are saved.
 
 CacheRoot            $cacheDir
+# Keep the cache key anchored to the host instead of letting a front-controller
+# rewrite such as /index.php collapse different pages onto the same key.
+CacheKeyBaseURL      "http://$row->{'domain_name'}/"
 CacheEnable          disk /
 # The cache has to run as a normal handler rather than in the quick handler,
 # otherwise the bypass rules below are evaluated too late to be seen.
@@ -421,6 +424,20 @@ EOF
 
     if ( $row->{'debug_headers'} ) {
         $conf .= "CacheHeader          On\n";
+    }
+
+    if ( $row->{'wordpress_mode'} ) {
+        $conf .= <<'EOF';
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{QUERY_STRING} !__imscp_cache_key=
+    RewriteCond %{REQUEST_URI} !^/index\.php$
+    RewriteRule ^ %{REQUEST_URI}?__imscp_cache_key=%{REQUEST_URI} [L,QSA,NE]
+</IfModule>
+EOF
     }
 
     # ACME challenges must always reach the origin.

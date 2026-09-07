@@ -56,6 +56,12 @@ purge
 check "MISS -"      "$(probe "$BASE/hello-world/")" "anon HTML, cold"
 check "HIT -"       "$(probe "$BASE/hello-world/")" "anon HTML, warm"
 
+# Pretty permalinks are rewritten to /index.php before the cache key is built,
+# so distinct pages must still have distinct cache entries.
+check "MISS -"      "$(probe "$BASE/second-post/")" "second pretty permalink is distinct and cold"
+check "HIT -"       "$(probe "$BASE/second-post/")" "second pretty permalink is warm"
+check "HIT -"       "$(probe "$BASE/hello-world/")" "original permalink still hits"
+
 # WordPress does not Vary on Cookie. Without these rules the cache would both
 # store an admin's page and serve the public one back to them.
 check "MISS bypass" "$(probe -H 'Cookie: wordpress_logged_in_x=1' "$BASE/hello-world/")" \
