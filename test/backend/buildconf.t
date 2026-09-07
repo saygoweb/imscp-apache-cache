@@ -46,6 +46,12 @@ like($conf, qr/^CacheIgnoreNoLastMod On$/m,      'pages without validators are c
 like($conf, qr/^CacheIgnoreHeaders\s+Set-Cookie$/m, 'session cookies are never stored');
 like($conf, qr/^CacheDefaultExpire\s+300$/m,     'default lifetime is written through');
 
+my $migration = do { local $/; open my $fh, '<', abs_path('../../sql/002_add_deny_paths.php') or die $!; <$fh> };
+like($migration, qr/ADD\s+(?:COLUMN\s+)?IF\s+NOT\s+EXISTS\s+`?deny_paths`?/i,
+    'upgrade migration is idempotent and does not re-add an existing deny_paths column');
+like($migration, qr/WHERE\s+`?deny_paths`?\s+IS\s+NULL\s+OR\s+`?deny_paths`?\s*=\s*''/i,
+    'upgrade migration preserves any existing deny_paths values instead of clobbering them');
+
 # The pair that makes a bypass actually bypass.
 like($conf, qr/^SetEnvIf imscp_nocache \. no-cache$/m,
     'a bypassed response is not stored');

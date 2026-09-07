@@ -24,9 +24,11 @@
 return array(
     'up'   => "
         ALTER TABLE `apache_cache`
-        ADD `deny_paths` TEXT CHARACTER SET utf8 COLLATE utf8_unicode_ci AFTER `bypass_paths`;
+        ADD COLUMN IF NOT EXISTS `deny_paths` TEXT CHARACTER SET utf8 COLLATE utf8_unicode_ci AFTER `bypass_paths`;
 
-        UPDATE `apache_cache` SET `deny_paths` = 'xmlrpc.php';
+        UPDATE `apache_cache`
+        SET `deny_paths` = 'xmlrpc.php'
+        WHERE `deny_paths` IS NULL OR `deny_paths` = '';
     ",
     'down' => "
         ALTER TABLE `apache_cache` DROP COLUMN `deny_paths`;
