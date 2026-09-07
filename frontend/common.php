@@ -365,3 +365,72 @@ function hasUnsettledDomains($customerId)
 
     return false;
 }
+
+/**
+ * Withdraw Apache cache permission from a customer only if every domain can be
+ * disabled in one pass.
+ *
+ * If any domain is already unsettled when the withdraw is applied, the whole
+ * operation is rolled back and false is returned so the caller can warn the
+ * reseller instead of revoking permission partially.
+ *
+ * @param int $customerId Customer unique identifier
+ * @return int|false Number of vhosts queued for disable, or false on conflict
+ */
+function withdrawCustomer($customerId)
+{
+    exec_query('START TRANSACTION');
+
+    try {
+        $count = 0;
+
+        foreach (getDomains($customerId) as $domain) {
+            $stmt = exec_query(
+                '
+                    SELECT apache_cache_id, status
+                    FROM apache_cache
+                    WHERE domain_type = ? AND domain_id = ?
+                    FOR UPDATE
+                ',
+                array($domain['domain_type'], $domain['domain_id'])
+            );
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($row) {
+                if (!isSettled($row['status'])) {
+                    exec_query('ROLLBACK');
+                    return false;
+                }
+
+                $cacheRow = $row;
+            } else {
+                if (!isSettled($domain['status'])) {
+                    exec_query('ROLLBACK');
+                    return false;
+                }
+
+                $cacheRow = getOrCreateRow($domain, $customerId);
+            }
+
+            exec_query(
+                'UPDATE apache_cache SET enabled = ?, status = ? WHERE apache_cache_id = ?',
+                array(0, 'todisable', $cacheRow['apache_cache_id'])
+            );
+            $count++;
+        }
+
+        exec_query(
+            '
+                INSERT INTO apache_cache_perm (admin_id, allowed) VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE allowed = ?
+            ',
+            array($customerId, 0, 0)
+        );
+
+        exec_query('COMMIT');
+        return $count;
+    } catch (\Exception $e) {
+        exec_query('ROLLBACK');
+        throw $e;
+    }
+}

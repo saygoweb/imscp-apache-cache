@@ -243,20 +243,12 @@ function handleSubmit($resellerId)
             continue;
         }
 
-        if (hasUnsettledDomains($customerId)) {
+        $count = withdrawCustomer($customerId);
+        if ($count === false) {
             $busyCustomers++;
             continue;
         }
 
-        exec_query(
-            '
-                INSERT INTO apache_cache_perm (admin_id, allowed) VALUES (?, ?)
-                ON DUPLICATE KEY UPDATE allowed = ?
-            ',
-            array($customerId, 0, 0)
-        );
-
-        $count = bulkSet($customerId, false);
         if ($count > 0) {
             $disabledByWithdraw += $count;
             $needsBackendRequest = true;
@@ -305,7 +297,7 @@ function handleSubmit($resellerId)
     if ($busyCustomers > 0) {
         set_page_message(
             tr(
-                'Skipped withdraw for %d customer(s) because one or more of their domains is already being processed.',
+                'Skipped withdraw for %d customer(s) because one or more of their domains became unsettled before the withdraw could be applied.',
                 $busyCustomers
             ),
             'warning'
