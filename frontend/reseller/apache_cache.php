@@ -115,75 +115,268 @@ function bulkSet($customerId, $enable)
 }
 
 /**
- * Apply an action requested from the list.
+ * Apply submitted bulk actions.
  *
  * @param int $resellerId Reseller unique identifier
  * @return void
  */
-function handleAction($resellerId)
+function handleSubmit($resellerId)
 {
-    if (!isset($_GET['action'], $_GET['customer_id'])) {
+    if (!isset($_POST['submit'])) {
         return;
     }
 
-    $action = clean_input($_GET['action']);
-    $customerId = intval($_GET['customer_id']);
+    $wanted = isset($_POST['action']) && is_array($_POST['action'])
+        ? $_POST['action'] : array();
 
-    if (!ownsCustomer($resellerId, $customerId)) {
-        showBadRequestErrorPage();
+    $normalized = array();
+    foreach ($wanted as $key => $action) {
+        if ($action === '') {
+            continue;
+        }
+
+        $normalized[$key] = $action;
+    }
+    $wanted = $normalized;
+
+    if (!$wanted) {
+        set_page_message(tr('Nothing to change.'), 'info');
+        redirectTo('apache_cache.php');
+        return;
     }
 
-    switch ($action) {
-        case 'allow':
-        case 'deny':
-            $allowed = ($action === 'allow') ? 1 : 0;
-            exec_query(
-                '
-                    INSERT INTO apache_cache_perm (admin_id, allowed) VALUES (?, ?)
-                    ON DUPLICATE KEY UPDATE allowed = ?
-                ',
-                array($customerId, $allowed, $allowed)
-            );
+    $domains = getResellerDomains($resellerId);
+    $visible = array();
+    foreach ($domains as $domain) {
+        $visible[domainKey($domain)] = $domain;
+    }
 
-            // Withdrawing the feature has to take the running caches with it,
-            // otherwise the customer keeps the cache but loses the switch.
-            if (!$allowed) {
-                $count = bulkSet($customerId, false);
-                send_request();
-                set_page_message(
-                    tr('Apache cache withdrawn, and disabled on %d domain(s).', $count), 'success'
-                );
-            } else {
-                set_page_message(tr('Apache cache made available to the customer.'), 'success');
-            }
-            break;
+    $siteActions = array();
+    $customerActions = array();
+    $customerPermissions = array();
 
-        case 'enable_all':
-        case 'disable_all':
-            $enable = ($action === 'enable_all');
-
-            if ($enable && !SGW_ApacheCache::customerHasApacheCache($customerId)) {
-                set_page_message(
-                    tr('This customer is not allowed to use the Apache cache.'), 'error'
-                );
-                break;
-            }
-
-            $count = bulkSet($customerId, $enable);
-            send_request();
-            set_page_message(
-                $enable
-                    ? tr('Cache scheduled to be enabled on %d domain(s).', $count)
-                    : tr('Cache scheduled to be disabled on %d domain(s).', $count),
-                'success'
-            );
-            break;
-
-        default:
+    foreach ($wanted as $key => $action) {
+        if (!is_string($key) || !isset($visible[$key])) {
             showBadRequestErrorPage();
+            return;
+        }
+
+        if (!is_string($action) || !in_array($action, array('allow', 'enable', 'disable', 'withdraw'), true)) {
+            showBadRequestErrorPage();
+            return;
+        }
+
+        $customerId = (int)$visible[$key]['admin_id'];
+        $customerPermissions[$customerId] = (bool)$visible[$key]['allowed'];
+
+        if (!isset($customerActions[$customerId])) {
+            $customerActions[$customerId] = array(
+                'allow'    => false,
+                'withdraw' => false,
+                'site'     => false
+            );
+        }
+
+        switch ($action) {
+            case 'allow':
+                $customerActions[$customerId]['allow'] = true;
+                break;
+
+            case 'withdraw':
+                $customerActions[$customerId]['withdraw'] = true;
+                break;
+
+            default:
+                $customerActions[$customerId]['site'] = true;
+                $siteActions[] = array(
+                    'action' => $action,
+                    'domain' => $visible[$key]
+                );
+        }
+    }
+
+    foreach ($customerActions as $actions) {
+        if ($actions['site'] && ($actions['allow'] || $actions['withdraw'])) {
+            showBadRequestErrorPage();
+            return;
+        }
+
+        if ($actions['allow'] && $actions['withdraw']) {
+            showBadRequestErrorPage();
+            return;
+        }
+    }
+
+    $enabledSites = 0;
+    $disabledSites = 0;
+    $allowedCustomers = 0;
+    $withdrawnCustomers = 0;
+    $disabledByWithdraw = 0;
+    $busySites = 0;
+    $busyCustomers = 0;
+    $rowErrors = 0;
+    $needsBackendRequest = false;
+
+    foreach ($siteActions as $entry) {
+        $domain = $entry['domain'];
+        $action = $entry['action'];
+        $customerId = (int)$domain['admin_id'];
+        $enabled = !empty($domain['enabled']);
+
+        if ($action === 'enable' && !$customerPermissions[$customerId]) {
+            $rowErrors++;
+            continue;
+        }
+
+        if (!isSettled($domain['status'])) {
+            $busySites++;
+            continue;
+        }
+
+        if ($action === 'enable' && $enabled) {
+            continue;
+        }
+
+        if ($action === 'disable' && !$enabled) {
+            continue;
+        }
+
+        $row = getOrCreateRow($domain, $customerId);
+
+        exec_query(
+            'UPDATE apache_cache SET enabled = ?, status = ? WHERE apache_cache_id = ?',
+            array(
+                $action === 'enable' ? 1 : 0,
+                $action === 'enable' ? 'toenable' : 'todisable',
+                $row['apache_cache_id']
+            )
+        );
+
+        if ($action === 'enable') {
+            $enabledSites++;
+        } else {
+            $disabledSites++;
+        }
+
+        $needsBackendRequest = true;
+    }
+
+    foreach ($customerActions as $customerId => $actions) {
+        if (!$actions['allow']) {
+            continue;
+        }
+
+        if ($customerPermissions[$customerId]) {
+            continue;
+        }
+
+        exec_query(
+            '
+                INSERT INTO apache_cache_perm (admin_id, allowed) VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE allowed = ?
+            ',
+            array($customerId, 1, 1)
+        );
+
+        $allowedCustomers++;
+    }
+
+    foreach ($customerActions as $customerId => $actions) {
+        if (!$actions['withdraw']) {
+            continue;
+        }
+
+        if (!$customerPermissions[$customerId]) {
+            continue;
+        }
+
+        if (hasUnsettledDomains($customerId)) {
+            $busyCustomers++;
+            continue;
+        }
+
+        exec_query(
+            '
+                INSERT INTO apache_cache_perm (admin_id, allowed) VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE allowed = ?
+            ',
+            array($customerId, 0, 0)
+        );
+
+        $count = bulkSet($customerId, false);
+        if ($count > 0) {
+            $disabledByWithdraw += $count;
+            $needsBackendRequest = true;
+        }
+
+        $withdrawnCustomers++;
+    }
+
+    if ($needsBackendRequest) {
+        send_request();
+    }
+
+    if ($enabledSites > 0) {
+        set_page_message(tr('Cache scheduled to be enabled on %d site(s).', $enabledSites), 'success');
+    }
+
+    if ($disabledSites > 0) {
+        set_page_message(tr('Cache scheduled to be disabled on %d site(s).', $disabledSites), 'success');
+    }
+
+    if ($allowedCustomers > 0) {
+        set_page_message(
+            tr('Apache cache made available to %d customer(s).', $allowedCustomers),
+            'success'
+        );
+    }
+
+    if ($withdrawnCustomers > 0) {
+        set_page_message(
+            tr(
+                'Apache cache withdrawn from %d customer(s), and disabled on %d domain(s).',
+                $withdrawnCustomers,
+                $disabledByWithdraw
+            ),
+            'success'
+        );
+    }
+
+    if ($busySites > 0) {
+        set_page_message(
+            tr('Skipped %d selected site(s) because the backend is already working on them.', $busySites),
+            'warning'
+        );
+    }
+
+    if ($busyCustomers > 0) {
+        set_page_message(
+            tr(
+                'Skipped withdraw for %d customer(s) because one or more of their domains is already being processed.',
+                $busyCustomers
+            ),
+            'warning'
+        );
+    }
+
+    if ($rowErrors > 0) {
+        set_page_message(
+            tr(
+                'Apache cache cannot be enabled on %d selected site(s) because the customer is not allowed to use it.',
+                $rowErrors
+            ),
+            'error'
+        );
+    }
+
+    if (!$enabledSites && !$disabledSites && !$allowedCustomers && !$withdrawnCustomers
+        && !$busySites && !$busyCustomers && !$rowErrors
+    ) {
+        set_page_message(tr('Nothing to change.'), 'info');
     }
 
     redirectTo('apache_cache.php');
+    return;
 }
 
 /**
@@ -211,22 +404,22 @@ function generatePage($tpl, $resellerId)
 
     foreach ($customers as $customer) {
         $allowed = (bool)$customer['allowed'];
-        $link = 'apache_cache.php?customer_id=' . $customer['admin_id'] . '&action=';
+        $link = 'apache_cache.php';
 
         $tpl->assign(array(
             'CUSTOMER_NAME'  => tohtml(decode_idna($customer['admin_name'])),
             'ALLOWED'        => $allowed ? tr('yes') : tr('no'),
             'ALLOWED_ICON'   => $allowed ? 'ok' : 'disabled',
             'ENABLED_COUNT'  => tohtml($customer['enabled_count']),
-            'PERM_LINK'      => tohtml($link . ($allowed ? 'deny' : 'allow'), 'htmlAttr'),
+            'PERM_LINK'      => tohtml($link, 'htmlAttr'),
             'PERM_LABEL'     => $allowed ? tr('Withdraw') : tr('Allow'),
             'PERM_ICON'      => $allowed ? 'close' : 'ok',
             // Only withdrawing is destructive, so only withdrawing confirms.
             'PERM_ONCLICK'   => $allowed
                 ? tohtml("return confirm('" . tojs(tr('Withdrawing the feature also disables the cache on all of this customer\'s domains. Continue?')) . "');", 'htmlAttr')
                 : '',
-            'ENABLE_LINK'    => tohtml($link . 'enable_all', 'htmlAttr'),
-            'DISABLE_LINK'   => tohtml($link . 'disable_all', 'htmlAttr')
+            'ENABLE_LINK'    => tohtml($link, 'htmlAttr'),
+            'DISABLE_LINK'   => tohtml($link, 'htmlAttr')
         ));
 
         if ($allowed) {
@@ -248,7 +441,7 @@ check_login('reseller');
 
 $resellerId = intval($_SESSION['user_id']);
 
-handleAction($resellerId);
+handleSubmit($resellerId);
 
 $tpl = new TemplateEngine();
 $tpl->define_dynamic(array(
