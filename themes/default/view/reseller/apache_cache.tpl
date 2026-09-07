@@ -1,37 +1,109 @@
 <div class="info">{TR_INTRO}</div>
 
-<!-- BDP: no_customers_block -->
-<div class="static_info">{NO_CUSTOMERS}</div>
-<!-- EDP: no_customers_block -->
+<form name="apache_cache_reseller" id="apache_cache_reseller" method="post"
+      action="apache_cache.php" onsubmit="return confirmWithdraw(this);">
+    <div class="buttons">
+        <label for="bulk_action">{TR_BULK_ACTION}</label>
+        <select name="bulk_action" id="bulk_action">
+            <option value=""></option>
+            <option value="allow">{TR_ALLOW}</option>
+            <option value="enable">{TR_ENABLE}</option>
+            <option value="disable">{TR_DISABLE}</option>
+            <option value="withdraw">{TR_WITHDRAW}</option>
+        </select>
+        <input type="button" value="{TR_BULK_APPLY}" onclick="return applyBulkAction(this.form);">
+    </div>
 
-<!-- BDP: customer_list -->
-<table class="firstColFixed datatable">
-    <thead>
-    <tr>
-        <th>{TR_CUSTOMER}</th>
-        <th>{TR_ALLOWED}</th>
-        <th>{TR_ENABLED_COUNT}</th>
-        <th>{TR_ACTION}</th>
-    </tr>
-    </thead>
-    <tbody>
-    <!-- BDP: customer_item -->
-    <tr>
-        <td>{CUSTOMER_NAME}</td>
-        <td><div class="icon i_{ALLOWED_ICON}">{ALLOWED}</div></td>
-        <td>{ENABLED_COUNT}</td>
-        <td>
-            <a class="icon i_{PERM_ICON}" href="{PERM_LINK}" title="{PERM_LABEL}"
-               onclick="{PERM_ONCLICK}">{PERM_LABEL}</a>
-            <!-- BDP: bulk_actions -->
-            <a class="icon i_ok" href="{ENABLE_LINK}" title="{TR_ENABLE_ALL}"
-               onclick="return confirm('{TR_ENABLE_CONFIRM}');">{TR_ENABLE_ALL}</a>
-            <a class="icon i_close" href="{DISABLE_LINK}" title="{TR_DISABLE_ALL}"
-               onclick="return confirm('{TR_DISABLE_CONFIRM}');">{TR_DISABLE_ALL}</a>
-            <!-- EDP: bulk_actions -->
-        </td>
-    </tr>
-    <!-- EDP: customer_item -->
-    </tbody>
-</table>
-<!-- EDP: customer_list -->
+    <!-- BDP: no_domains_block -->
+    <div class="static_info">{NO_DOMAINS}</div>
+    <!-- EDP: no_domains_block -->
+
+    <!-- BDP: domain_list -->
+    <table class="firstColFixed datatable">
+        <thead>
+        <tr>
+            <th>{TR_SELECT}</th>
+            <th>{TR_CUSTOMER}</th>
+            <th>{TR_DOMAIN}</th>
+            <th>{TR_ALLOWED}</th>
+            <th>{TR_ENABLED}</th>
+            <th>{TR_STATE}</th>
+            <th>{TR_ACTION}</th>
+        </tr>
+        </thead>
+        <tbody>
+        <!-- BDP: domain_item -->
+        <tr>
+            <td>{BULK_CHECKBOX}</td>
+            <td>{CUSTOMER_NAME}</td>
+            <td>{DOMAIN_NAME}</td>
+            <td><div class="icon i_{ALLOWED_ICON}">{ALLOWED}</div></td>
+            <td><div class="icon i_{ENABLED_ICON}">{ENABLED}</div></td>
+            <td><div class="icon i_{STATE_ICON}">{STATE}</div></td>
+            <td>{ACTION_SELECT}</td>
+        </tr>
+        <!-- EDP: domain_item -->
+        </tbody>
+    </table>
+    <!-- EDP: domain_list -->
+
+    <div class="buttons">
+        <input name="submit" type="submit" value="{TR_UPDATE}">
+    </div>
+</form>
+
+<script>
+function getRow(node) {
+    while (node && node.tagName !== 'TR') {
+        node = node.parentNode;
+    }
+
+    return node;
+}
+
+function applyBulkAction(form) {
+    var action = form.elements.bulk_action.value;
+
+    if (!action) {
+        return false;
+    }
+
+    var rows = form.querySelectorAll('input[type="checkbox"][name^="bulk["]:checked');
+
+    for (var i = 0; i < rows.length; i++) {
+        var checkbox = rows[i];
+        var row = getRow(checkbox);
+        var select = row ? row.querySelector('select[name^="action["]') : null;
+
+        if (!select || select.disabled) {
+            continue;
+        }
+
+        var supported = false;
+        for (var j = 0; j < select.options.length; j++) {
+            if (select.options[j].value === action) {
+                supported = true;
+                break;
+            }
+        }
+
+        if (supported) {
+            select.value = action;
+        }
+    }
+
+    return false;
+}
+
+function confirmWithdraw(form) {
+    var selects = form.querySelectorAll('select[name^="action["]');
+
+    for (var i = 0; i < selects.length; i++) {
+        if (!selects[i].disabled && selects[i].value === 'withdraw') {
+            return confirm('{TR_WITHDRAW_CONFIRM}');
+        }
+    }
+
+    return true;
+}
+</script>

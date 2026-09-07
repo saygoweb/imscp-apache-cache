@@ -379,56 +379,72 @@ function handleSubmit($resellerId)
     return;
 }
 
-/**
- * Fill the customer table.
- *
- * @param TemplateEngine $tpl
- * @param int $resellerId Reseller unique identifier
- * @return void
- */
 function generatePage($tpl, $resellerId)
 {
-    $customers = getCustomers($resellerId);
+    $domains = getResellerDomains($resellerId);
 
-    if (!$customers) {
+    if (!$domains) {
         $tpl->assign(array(
-            'CUSTOMER_LIST' => '',
-            'NO_CUSTOMERS'  => tr('You have no customers yet.')
+            'DOMAIN_LIST' => '',
+            'NO_DOMAINS'  => tr('You have no domains yet.')
         ));
-        $tpl->parse('NO_CUSTOMERS_BLOCK', 'no_customers_block');
+        $tpl->parse('NO_DOMAINS_BLOCK', 'no_domains_block');
 
         return;
     }
 
-    $tpl->assign('NO_CUSTOMERS_BLOCK', '');
+    $customerSettled = array();
+    foreach ($domains as $domain) {
+        $customerId = (int)$domain['admin_id'];
 
-    foreach ($customers as $customer) {
-        $allowed = (bool)$customer['allowed'];
-        $link = 'apache_cache.php';
-
-        $tpl->assign(array(
-            'CUSTOMER_NAME'  => tohtml(decode_idna($customer['admin_name'])),
-            'ALLOWED'        => $allowed ? tr('yes') : tr('no'),
-            'ALLOWED_ICON'   => $allowed ? 'ok' : 'disabled',
-            'ENABLED_COUNT'  => tohtml($customer['enabled_count']),
-            'PERM_LINK'      => tohtml($link, 'htmlAttr'),
-            'PERM_LABEL'     => $allowed ? tr('Withdraw') : tr('Allow'),
-            'PERM_ICON'      => $allowed ? 'close' : 'ok',
-            // Only withdrawing is destructive, so only withdrawing confirms.
-            'PERM_ONCLICK'   => $allowed
-                ? tohtml("return confirm('" . tojs(tr('Withdrawing the feature also disables the cache on all of this customer\'s domains. Continue?')) . "');", 'htmlAttr')
-                : '',
-            'ENABLE_LINK'    => tohtml($link, 'htmlAttr'),
-            'DISABLE_LINK'   => tohtml($link, 'htmlAttr')
-        ));
-
-        if ($allowed) {
-            $tpl->parse('BULK_ACTIONS', 'bulk_actions');
-        } else {
-            $tpl->assign('BULK_ACTIONS', '');
+        if (!isset($customerSettled[$customerId])) {
+            $customerSettled[$customerId] = true;
         }
 
-        $tpl->parse('CUSTOMER_ITEM', '.customer_item');
+        if (!isSettled($domain['status'])) {
+            $customerSettled[$customerId] = false;
+        }
+    }
+
+    $tpl->assign('NO_DOMAINS_BLOCK', '');
+
+    foreach ($domains as $domain) {
+        $allowed = (bool)$domain['allowed'];
+        $enabled = !empty($domain['enabled']);
+        $settled = isSettled($domain['status']);
+        $customerId = (int)$domain['admin_id'];
+        $canWithdraw = $allowed && !empty($customerSettled[$customerId]);
+        $key = tohtml(domainKey($domain), 'htmlAttr');
+
+        $options = array(
+            '<option value=""></option>'
+        );
+
+        if ($allowed) {
+            $options[] = '<option value="enable">' . tohtml(tr('Enable')) . '</option>';
+            $options[] = '<option value="disable">' . tohtml(tr('Disable')) . '</option>';
+
+            if ($canWithdraw) {
+                $options[] = '<option value="withdraw">' . tohtml(tr('Withdraw')) . '</option>';
+            }
+        } else {
+            $options[] = '<option value="allow">' . tohtml(tr('Allow')) . '</option>';
+        }
+
+        $tpl->assign(array(
+            'CUSTOMER_NAME' => tohtml(decode_idna($domain['admin_name'])),
+            'DOMAIN_NAME'   => tohtml(decode_idna($domain['domain_name'])),
+            'ALLOWED'       => $allowed ? tr('yes') : tr('no'),
+            'ALLOWED_ICON'  => $allowed ? 'ok' : 'disabled',
+            'ENABLED'       => $enabled ? tr('yes') : tr('no'),
+            'ENABLED_ICON'  => $enabled ? 'ok' : 'disabled',
+            'STATE'         => statusText($domain['status']),
+            'STATE_ICON'    => statusIcon($domain['status']),
+            'BULK_CHECKBOX' => '<input type="checkbox" name="bulk[' . $key . ']"' . (!$settled ? ' disabled' : '') . '>',
+            'ACTION_SELECT' => '<select name="action[' . $key . ']"' . (!$settled ? ' disabled' : '') . '>' . implode('', $options) . '</select>'
+        ));
+
+        $tpl->parse('DOMAIN_ITEM', '.domain_item');
     }
 }
 
@@ -445,26 +461,32 @@ handleSubmit($resellerId);
 
 $tpl = new TemplateEngine();
 $tpl->define_dynamic(array(
-    'layout'             => 'shared/layouts/ui.tpl',
-    'page'               => '../../plugins/SGW_ApacheCache/themes/default/view/reseller/apache_cache.tpl',
-    'page_message'       => 'layout',
-    'no_customers_block' => 'page',
-    'customer_list'      => 'page',
-    'customer_item'      => 'customer_list',
-    'bulk_actions'       => 'customer_item'
+    'layout'           => 'shared/layouts/ui.tpl',
+    'page'             => '../../plugins/SGW_ApacheCache/themes/default/view/reseller/apache_cache.tpl',
+    'page_message'     => 'layout',
+    'no_domains_block' => 'page',
+    'domain_list'      => 'page',
+    'domain_item'      => 'domain_list'
 ));
 $tpl->assign(array(
-    'TR_PAGE_TITLE'     => tr('Reseller / Customers / Apache Cache'),
-    'TR_INTRO'          => tr('Decide which customers may use the Apache disk cache, and switch it on or off across all of a customer\'s domains at once.'),
-    'TR_CUSTOMER'       => tr('Customer'),
-    'TR_ALLOWED'        => tr('Allowed'),
-    'TR_ENABLED_COUNT'  => tr('Domains cached'),
-    'TR_ACTION'         => tr('Actions'),
-    'TR_ENABLE_ALL'     => tr('Enable on all domains'),
-    'TR_DISABLE_ALL'    => tr('Disable on all domains'),
-    'TR_ENABLE_CONFIRM' => tr('Enable the cache on every domain this customer owns?'),
-    'TR_DISABLE_CONFIRM' => tr('Disable the cache on every domain this customer owns?')
-));
+    'TR_PAGE_TITLE'       => tr('Reseller / Apache Cache'),
+    'TR_INTRO'            => tr('Manage Apache cache access and per-domain cache actions for your customers.'),
+    'TR_CUSTOMER'         => tr('Customer'),
+    'TR_DOMAIN'           => tr('Domain'),
+    'TR_ALLOWED'          => tr('Allowed'),
+    'TR_ENABLED'          => tr('Enabled'),
+    'TR_STATE'            => tr('State'),
+    'TR_ACTION'           => tr('Action'),
+    'TR_SELECT'           => tr('Select'),
+    'TR_BULK_ACTION'      => tr('Bulk action'),
+    'TR_BULK_APPLY'       => tr('Apply to selected'),
+    'TR_UPDATE'           => tr('Update'),
+    'TR_ALLOW'            => tr('Allow'),
+    'TR_ENABLE'           => tr('Enable'),
+    'TR_DISABLE'          => tr('Disable'),
+    'TR_WITHDRAW'         => tr('Withdraw'),
+    'TR_WITHDRAW_CONFIRM' => tojs(tr('Withdrawing the feature also disables the cache on all of this customer\'s domains. Continue?'))
+)); 
 
 generateNavigation($tpl);
 generatePage($tpl, $resellerId);
