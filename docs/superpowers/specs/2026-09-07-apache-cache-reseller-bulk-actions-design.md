@@ -332,8 +332,8 @@ Using the sibling `../imscp/Vagrant` environment:
    disables all of that customer's domains
 7. verify busy rows remain visible but cannot be selected
 8. verify not-allowed rows cannot be enabled successfully
-9. verify tampered POSTs that target disabled rows or invalid per-row actions
-   are rejected atomically
+9. verify malformed POSTs with forged keys, unknown action values, or mixed
+   customer-wide conflicts are rejected atomically
 
 ## Out of scope
 
