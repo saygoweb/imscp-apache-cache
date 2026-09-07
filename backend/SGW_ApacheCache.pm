@@ -500,6 +500,17 @@ SetEnvIf imscp_nocache . no-cache
 RequestHeader set Cache-Control "no-cache" env=imscp_nocache
 EOF
 
+    if ( $row->{'wordpress_mode'} ) {
+        # The synthetic cache key lives in the query string, and Apache will
+        # not cache a query-string URL unless the response carries explicit
+        # freshness. s-maxage feeds the shared cache while max-age=0 keeps
+        # browsers revalidating the HTML instead of pinning it locally.
+        $conf .= sprintf(
+            "Header setifempty Cache-Control \"public, max-age=0, s-maxage=%d\" env=!imscp_nocache\n",
+            $row->{'default_expire'}
+        );
+    }
+
     if ( $row->{'debug_headers'} ) {
         $conf .= "Header always set X-Imscp-Bypass \"yes\" env=imscp_nocache\n";
     }

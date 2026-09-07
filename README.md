@@ -92,6 +92,13 @@ original `REQUEST_URI` before the rewrite. That keeps distinct pretty URLs from
 collapsing onto the same disk cache entry while leaving static assets and real
 directories alone.
 
+**Query-string keys need explicit freshness.** Apache will not store a URL
+carrying a query string unless the response has an explicit `Expires` or
+`Cache-Control` lifetime. Because the synthetic key lives in the query string,
+the plugin also adds `Cache-Control: public, max-age=0, s-maxage=...` when the
+application has not already set one, so `mod_cache` can store the page while
+browsers still revalidate HTML instead of pinning it locally.
+
 **A refused path is refused, not merely uncached.** The deny list is a
 `<LocationMatch>` carrying `Require all denied`. Location sections merge after
 `<Directory>` blocks and after the customer's `.htaccess`, so the refusal wins
