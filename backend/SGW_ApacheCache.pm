@@ -399,6 +399,9 @@ sub _buildConf
 # the next time the domain's cache settings are saved.
 
 CacheRoot            $cacheDir
+# Keep the cache key anchored to the host instead of letting a front-controller
+# rewrite such as /index.php collapse different pages onto the same key.
+CacheKeyBaseURL      "http://$row->{'domain_name'}/"
 CacheEnable          disk /
 # The cache has to run as a normal handler rather than in the quick handler,
 # otherwise the bypass rules below are evaluated too late to be seen.

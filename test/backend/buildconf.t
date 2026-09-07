@@ -38,6 +38,8 @@ my %base = (
 my $conf = $plugin->_buildConf( { %base }, '/var/cache/apache2/imscp/example.com' );
 
 like($conf, qr/^CacheRoot\s+\Q\/var\/cache\/apache2\/imscp\/example.com\E$/m, 'cache root is per domain');
+like($conf, qr/^CacheKeyBaseURL\s+"http:\/\/example\.com\/"$/m,
+    'cache keys are rooted at the vhost, not the rewritten index.php');
 like($conf, qr/^CacheEnable\s+disk \/$/m,        'cache is enabled at the root');
 like($conf, qr/^CacheQuickHandler\s+Off$/m,      'quick handler is off so bypass rules are seen');
 like($conf, qr/^CacheIgnoreNoLastMod On$/m,      'pages without validators are cacheable');
