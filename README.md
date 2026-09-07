@@ -136,7 +136,8 @@ Tests:
 ```shell
 # Configuration generator, no live Apache needed. Must run as root: the module
 # pulls in iMSCP::* from the engine, whose directory is not world readable.
-cd test/backend && sudo perl all.t
+make.phar test                # or: cd test/backend && sudo perl all.t
+                              # already root? make.phar test sudo=
 
 # Behaviour of a live vhost, against the fixture WordPress site
 test/cache-matrix.sh
@@ -146,8 +147,23 @@ test/logged-in-leak.sh
 ## Packaging
 
 ```shell
-make.phar package    # produces SGW_ApacheCache.tgz
+make.phar version                 # 0.2.0 -> 0.2.1, stamped with today's date
+make.phar version bump=minor      # 0.2.0 -> 0.3.0; also major, or an explicit 1.2.3
+make.phar package                 # produces SGW_ApacheCache.tgz
 ```
+
+The version target is `tools/version.php`, which may also be run directly:
+`php tools/version.php major|minor|patch|X.Y.Z`. It sets both `version` and
+`date` in `info.php`, since the panel will not offer a plugin for update unless
+its version has moved. `--date=YYYY-MM-DD` stamps a date other than today, and
+`--force` allows a version that is not newer than the current one.
+
+A patch bump is applied automatically: `.github/workflows/version-bump.yml`
+runs `version.php patch` when a pull request is merged into `main` and pushes
+the result. A pull request that sets the version itself, for a minor or major
+release, is left alone. The push needs `main` to accept a commit from
+`github-actions[bot]`; on a protected branch, give the bot a bypass or replace
+`GITHUB_TOKEN` with a PAT that has contents write.
 
 Only `tar.gz`, `tar.bz2`, `tar.xz` and `zip` archives are accepted by the
 plugin uploader. Do not upload a Git source archive.
