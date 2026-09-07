@@ -394,7 +394,7 @@ function withdrawCustomer($customerId)
                 ',
                 array($domain['domain_type'], $domain['domain_id'])
             );
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $row = $stmt->fetchRow(PDO::FETCH_ASSOC);
 
             if ($row) {
                 if (!isSettled($row['status'])) {

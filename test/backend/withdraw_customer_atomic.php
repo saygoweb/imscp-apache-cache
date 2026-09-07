@@ -20,7 +20,7 @@ namespace {
 
     class FakeStatement
     {
-        private array $rows;
+        private $rows;
 
         public function __construct(array $rows)
         {
@@ -30,11 +30,6 @@ namespace {
         public function fetchAll($mode = null)
         {
             return $this->rows;
-        }
-
-        public function fetch($mode = null)
-        {
-            return $this->rows[0] ?? false;
         }
 
         public function fetchRow($mode = null)
@@ -222,6 +217,13 @@ namespace {
         }
     }
 
+    function querySqls()
+    {
+        return array_map(function ($entry) {
+            return $entry[0];
+        }, $GLOBALS['mock']['queries']);
+    }
+
     require_once __DIR__ . '/../../frontend/common.php';
 
     resetMock(array('ok', 'todisable'));
@@ -232,8 +234,8 @@ namespace {
     expect($GLOBALS['mock']['apache_cache_perm'][99]['allowed'] === 1, 'permission must stay allowed on failure');
     expect($GLOBALS['mock']['apache_cache'][11]['status'] === 'ok', 'first domain change must be rolled back');
     expect($GLOBALS['mock']['apache_cache'][12]['status'] === 'ok', 'second domain must not be changed');
-    expect(in_array('ROLLBACK', array_map(fn($entry) => $entry[0], $GLOBALS['mock']['queries']), true), 'rollback must be issued');
-    expect(!in_array('COMMIT', array_map(fn($entry) => $entry[0], $GLOBALS['mock']['queries']), true), 'commit must not be issued on failure');
+    expect(in_array('ROLLBACK', querySqls(), true), 'rollback must be issued');
+    expect(!in_array('COMMIT', querySqls(), true), 'commit must not be issued on failure');
 
     resetMock(array('ok', 'ok'));
 
@@ -245,7 +247,7 @@ namespace {
     expect($GLOBALS['mock']['apache_cache'][12]['status'] === 'todisable', 'second domain must be queued for disable');
     expect($GLOBALS['mock']['apache_cache'][11]['enabled'] === 0, 'first domain must be disabled');
     expect($GLOBALS['mock']['apache_cache'][12]['enabled'] === 0, 'second domain must be disabled');
-    expect(in_array('COMMIT', array_map(fn($entry) => $entry[0], $GLOBALS['mock']['queries']), true), 'commit must be issued on success');
+    expect(in_array('COMMIT', querySqls(), true), 'commit must be issued on success');
 
     exit(0);
 }
