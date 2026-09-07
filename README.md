@@ -85,6 +85,13 @@ out of the way with a `REDIRECT_` prefix. `CacheDisable /my-account` and
 to work for `/wp-admin`, which is a real directory. Paths are therefore matched
 against `THE_REQUEST`, the original request line, which survives intact.
 
+**The cache key must survive the same rewrite.** A front-controller request is
+still a unique page even when Apache has rewritten it to `/index.php`, so the
+plugin adds a synthetic `__imscp_cache_key` query parameter based on the
+original `REQUEST_URI` before the rewrite. That keeps distinct pretty URLs from
+collapsing onto the same disk cache entry while leaving static assets and real
+directories alone.
+
 **A refused path is refused, not merely uncached.** The deny list is a
 `<LocationMatch>` carrying `Require all denied`. Location sections merge after
 `<Directory>` blocks and after the customer's `.htaccess`, so the refusal wins

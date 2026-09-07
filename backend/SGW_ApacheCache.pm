@@ -426,6 +426,20 @@ EOF
         $conf .= "CacheHeader          On\n";
     }
 
+    if ( $row->{'wordpress_mode'} ) {
+        $conf .= <<'EOF';
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{QUERY_STRING} !__imscp_cache_key=
+    RewriteCond %{REQUEST_URI} !^/index\.php$
+    RewriteRule ^ %{REQUEST_URI}?__imscp_cache_key=%{REQUEST_URI} [L,QSA,NE]
+</IfModule>
+EOF
+    }
+
     # ACME challenges must always reach the origin.
     my @paths = ( '/.well-known/', $self->_splitList( $row->{'bypass_paths'} ) );
     my @cookies = $self->_splitList( $row->{'bypass_cookies'} );
