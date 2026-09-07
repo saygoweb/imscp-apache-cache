@@ -8,7 +8,8 @@ run bulk **Enable**, **Disable**, or **Withdraw** actions.
 
 The new screen should follow the same multiple-select concept as the PHP
 version reseller panel, while preserving Apache Cache's existing state machine
-and customer-permission rules.
+and customer-permission rules, including the ability to grant the feature again
+after it has been withdrawn.
 
 ## Requested behavior
 
@@ -16,6 +17,8 @@ and customer-permission rules.
 - Allow selecting multiple rows with per-row checkboxes plus a select-all
   control.
 - Provide a bulk-action control below the table with:
+  - **Allow**: treat the selected rows as a customer selection, deduplicate by
+    customer, and grant Apache Cache to each affected customer.
   - **Enable**: enable Apache Cache only on the selected sites.
   - **Disable**: disable Apache Cache only on the selected sites.
   - **Withdraw**: treat the selected rows as a customer selection, deduplicate
@@ -61,6 +64,18 @@ screen. Each row contains:
 Busy rows render as disabled controls so they remain visible but cannot be
 selected.
 
+### Per-row action availability
+
+Each row's visible action `<select>` is constrained by the row's current state:
+
+- allowed + settled rows may offer: blank, **Enable**, **Disable**,
+  **Withdraw** when every domain owned by that customer is settled
+- not-allowed + settled rows may offer: blank, **Allow**
+- unsettled rows render their checkbox and action select disabled
+
+This keeps the visible UI aligned with the existing permission and queue rules
+instead of presenting actions that would only be rejected later.
+
 ### Bulk action controls
 
 Below the table, render:
@@ -69,16 +84,28 @@ Below the table, render:
 - a button that applies the chosen action to the ticked rows
 - a normal submit button
 
+Each row also carries a visible per-row action `<select>` whose choices are:
+
+- blank / no change
+- Allow
+- Enable
+- Disable
+- Withdraw
+
 The client-side helper script follows the PHP version pattern:
 
-- the select-all checkbox toggles all enabled row checkboxes
-- the bulk-action button copies the chosen action into the selected rows' hidden
-  inputs so the reseller can see exactly what will be submitted before pressing
-  Apply
+- the select-all checkbox toggles all enabled row checkboxes in the rendered
+  table on the page
+- the bulk-action button copies the chosen action into the selected rows' visible
+  per-row action selects, so the reseller can see exactly what will be
+  submitted before pressing Apply
+- when the chosen bulk action is not present in a given row's allowed options,
+  that row is left unchanged
 
 For Apache Cache, each selected row needs only an action rather than a freeform
-value like a PHP version, so the hidden input can store one of:
+value like a PHP version, so the per-row action select stores one of:
 
+- `allow`
 - `enable`
 - `disable`
 - `withdraw`
@@ -113,28 +140,52 @@ per-site shape required by the new UI.
 ### Request shape
 
 Convert the reseller page from link-triggered GET actions to a POST form. The
-form submission carries:
+form submission carries only changed actions:
 
-- the reseller-selected site keys
-- the action chosen for each selected site
+- `action[key]` only for rows whose visible per-row action select is non-blank,
+  where `key` is the existing `(domain_type, domain_id)` pair encoded into a
+  stable string for the form and the value is one of `allow`, `enable`,
+  `disable`, or `withdraw`
 - the submit marker
+
+The row checkboxes are a client-side bulk-selection aid only. They are used to
+copy a chosen bulk action into the visible per-row selects, just like the PHP
+version page copies a bulk value into visible per-row selects. The server does
+not trust checkbox state and instead derives the requested work from the final
+per-row action values the reseller can see when pressing Apply.
 
 As with the PHP version page, submitted keys must be validated against the
 current reseller-visible domain list rather than trusting posted identifiers.
+Missing keys mean "no change" and are ignored.
 
 ### Applying Enable and Disable
 
 For each selected site:
 
 1. Validate that the row belongs to one of the reseller's customers.
-2. Ignore rows that are no longer present in the reseller-visible set.
+2. If any submitted key is no longer present in the reseller-visible set, treat
+   the request as invalid rather than partially applying it.
 3. Reject **Enable** for rows whose customer is not allowed to use Apache
    Cache.
-4. Skip unsettled rows and count them for warning output.
+4. If the row became unsettled after page render, skip it and count it for
+   warning output.
 5. Create the cache row on first use via the existing row-creation helper.
 6. Set `enabled` and queue `toenable` or `todisable` for that specific site.
 
 If at least one site changes, call `send_request()` once after the loop.
+
+### Applying Allow
+
+For selected rows marked **Allow**:
+
+1. Map rows to customer IDs.
+2. Deduplicate the customer IDs.
+3. Verify that every row carrying **Allow** was part of the reseller-visible
+   row set presented to the user.
+4. Grant permission once per customer in `apache_cache_perm`.
+
+No site-level queue state change is needed for **Allow** on its own; it restores
+feature availability so a later **Enable** can succeed.
 
 ### Applying Withdraw
 
@@ -142,8 +193,14 @@ For selected rows marked **Withdraw**:
 
 1. Map rows to customer IDs.
 2. Deduplicate the customer IDs.
-3. Revoke permission once per customer in `apache_cache_perm`.
-4. Reuse the existing customer-wide disable behavior so each affected
+3. Because **Withdraw** is offered only when every domain owned by the customer
+   is currently settled, the normal execution path may assume customer-wide
+   eligibility.
+4. If a customer becomes ineligible between page render and submit because any
+   of their domains is now unsettled, skip **Withdraw** for that customer and
+   report it in the warning output.
+5. Revoke permission once per remaining customer in `apache_cache_perm`.
+6. Reuse the existing customer-wide disable behavior so each affected
    customer's domains are disabled through the normal queue states.
 
 This keeps the existing semantics intact: a customer without the feature should
@@ -155,6 +212,7 @@ The reseller should get specific feedback rather than a single generic success:
 
 - how many selected sites were queued for enable
 - how many selected sites were queued for disable
+- how many customers were allowed
 - how many customers were withdrawn
 - how many rows were skipped because work was already in progress
 - when nothing was selectable or no effective change was requested
@@ -162,16 +220,71 @@ The reseller should get specific feedback rather than a single generic success:
 Mixed results are expected for large selections, so success and warning
 messages may appear together.
 
+## Mixed-action rules
+
+The form may contain different actions across different rows, but customer-wide
+actions need conflict checking per customer:
+
+- **Enable** and **Disable** are site-level actions.
+- **Allow** and **Withdraw** are customer-level actions derived from selected
+  rows.
+- For a given customer within one submission, **Allow** or **Withdraw** may not
+  be mixed with **Enable** or **Disable**.
+- For a given customer within one submission, **Allow** and **Withdraw** may
+  not both be present.
+
+If a submission violates those rules, reject it with an error rather than
+guessing precedence.
+
+## Validation and failure policy
+
+The server should split failures into two classes so control flow is
+deterministic:
+
+### Whole-request rejection
+
+Reject the entire submission and apply nothing when:
+
+- any submitted key is not present in the reseller-visible row set
+- any submitted action value is outside the allowed action set
+- customer-wide mixed-action rules are violated for any customer
+
+These are treated as invalid or tampered requests rather than recoverable
+per-row conditions.
+
+### Valid request with partial application
+
+Once the request shape is valid, row- or customer-level execution conditions do
+not abort the whole submission:
+
+- **Enable** for a not-allowed customer is reported as an error for that row and
+  skipped
+- rows that became unsettled after page render are skipped for **Enable** or
+  **Disable** with a warning
+- **Withdraw** for a customer with any unsettled domain is skipped for that
+  whole customer with a warning when that customer became ineligible after page
+  render
+- actions that would make no effective change are ignored and may contribute to
+  a final "Nothing to change" informational message
+
+This yields predictable behavior: malformed requests fail atomically, while
+valid requests may complete partially with explicit feedback.
+
 ## Error handling
 
 - If the submission includes keys outside the reseller's own visible site list,
   treat it as a bad request.
 - If an **Enable** action is submitted for a customer whose permission is not
   granted, report it as an error rather than silently enabling the site.
+- If an **Allow** or **Withdraw** action appears on several rows for the same
+  customer, apply it once for that customer.
+- If a customer is already not allowed, **Withdraw** is not offered for that
+  customer's rows because it would be a no-op.
+- If **Withdraw** is requested for a customer that has any unsettled domain,
+  skip the whole withdraw for that customer and explain why in the warning
+  output.
 - If no selectable rows are chosen, show an informational "Nothing to change"
   style message.
-- If the same customer appears in multiple withdrawn rows, withdraw only once
-  for that customer.
 
 ## Implementation boundaries
 
@@ -203,7 +316,7 @@ backend already understands.
 ### Repo-local validation
 
 - package the plugin with `make.phar package`
-- run existing repo checks that are relevant to the changed behavior
+- run `cd test/backend && sudo perl all.t`
 
 ### Vagrant integration validation
 
@@ -219,6 +332,8 @@ Using the sibling `../imscp/Vagrant` environment:
    disables all of that customer's domains
 7. verify busy rows remain visible but cannot be selected
 8. verify not-allowed rows cannot be enabled successfully
+9. verify tampered POSTs that target disabled rows or invalid per-row actions
+   are rejected atomically
 
 ## Out of scope
 
