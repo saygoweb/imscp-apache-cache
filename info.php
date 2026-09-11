@@ -21,9 +21,9 @@
 return array(
     'author'      => 'Cambell Prince',
     'email'       => 'cambell.prince@gmail.com',
-    'version'     => '0.2.4',
+    'version'     => '0.2.5',
     'require_api' => '1.5.1',
-    'date'        => '2026-09-07',
+    'date'        => '2026-09-11',
     'name'        => 'SGW_ApacheCache',
     'desc'        => 'Per-domain Apache disk cache (mod_cache_disk), with a WordPress mode.',
     'url'         => 'https://github.com/saygoweb/imscp-apache-cache'
