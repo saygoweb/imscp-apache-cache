@@ -2,4 +2,7 @@ use strict;
 use warnings;
 use TAP::Harness;
 
-TAP::Harness->new({ verbosity => 1, color => 1 })->runtests('buildconf.t');
+TAP::Harness->new({ verbosity => 1, color => 1 })->runtests(
+    'buildconf.t',
+    'withdraw_customer_atomic.t'
+);

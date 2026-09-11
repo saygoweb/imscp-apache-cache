@@ -240,3 +240,197 @@ function isSettled($status)
     return $status === null || $status === 'ok' || $status === 'disabled'
         || statusIcon($status) === 'error';
 }
+
+/**
+ * Every vhost owned by any of a reseller's customers.
+ *
+ * @param int $resellerId Reseller unique identifier
+ * @return array
+ */
+function getResellerDomains($resellerId)
+{
+    $stmt = exec_query(
+        "
+            SELECT v.*, ad.admin_name, COALESCE(p.allowed, 1) AS allowed,
+                c.apache_cache_id, c.enabled, c.status, c.state
+            FROM (
+                SELECT 'dmn' AS domain_type, d.domain_id AS domain_id,
+                    d.domain_admin_id AS admin_id,
+                    d.domain_name AS domain_name, d.domain_status AS domain_status
+                FROM domain AS d
+                WHERE d.domain_admin_id IN (
+                    SELECT admin_id FROM admin WHERE created_by = ? AND admin_type = 'user'
+                )
+
+                UNION ALL
+
+                SELECT 'sub', s.subdomain_id, d.domain_admin_id,
+                    CONCAT(s.subdomain_name, '.', d.domain_name), s.subdomain_status
+                FROM subdomain AS s
+                JOIN domain AS d USING(domain_id)
+                WHERE d.domain_admin_id IN (
+                    SELECT admin_id FROM admin WHERE created_by = ? AND admin_type = 'user'
+                )
+
+                UNION ALL
+
+                SELECT 'als', a.alias_id, d.domain_admin_id,
+                    a.alias_name, a.alias_status
+                FROM domain_aliasses AS a
+                JOIN domain AS d USING(domain_id)
+                WHERE d.domain_admin_id IN (
+                    SELECT admin_id FROM admin WHERE created_by = ? AND admin_type = 'user'
+                )
+
+                UNION ALL
+
+                SELECT 'alssub', sa.subdomain_alias_id, d.domain_admin_id,
+                    CONCAT(sa.subdomain_alias_name, '.', a.alias_name),
+                    sa.subdomain_alias_status
+                FROM subdomain_alias AS sa
+                JOIN domain_aliasses AS a USING(alias_id)
+                JOIN domain AS d USING(domain_id)
+                WHERE d.domain_admin_id IN (
+                    SELECT admin_id FROM admin WHERE created_by = ? AND admin_type = 'user'
+                )
+            ) AS v
+            JOIN admin AS ad ON ad.admin_id = v.admin_id
+            LEFT JOIN apache_cache_perm AS p ON p.admin_id = v.admin_id
+            LEFT JOIN apache_cache AS c
+                ON c.domain_type = v.domain_type AND c.domain_id = v.domain_id
+            ORDER BY ad.admin_name, v.domain_name
+        ",
+        array($resellerId, $resellerId, $resellerId, $resellerId)
+    );
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/**
+ * The form key identifying one vhost.
+ *
+ * @param array $domain Row as returned by getResellerDomains()
+ * @return string
+ */
+function domainKey(array $domain)
+{
+    return $domain['domain_type'] . '-' . $domain['domain_id'];
+}
+
+/**
+ * Validate and decode a posted form key.
+ *
+ * @param string $key An encoded key, e.g. "dmn-12"
+ * @return array|false array('domain_type' => string, 'domain_id' => int), or false on failure
+ */
+function splitDomainKey($key)
+{
+    if (!is_string($key)) {
+        return false;
+    }
+
+    $parts = explode('-', $key);
+    if (count($parts) !== 2) {
+        return false;
+    }
+
+    list($type, $id) = $parts;
+    if (!in_array($type, array('dmn', 'sub', 'als', 'alssub'), true)) {
+        return false;
+    }
+
+    if (!ctype_digit($id)) {
+        return false;
+    }
+
+    return array(
+        'domain_type' => $type,
+        'domain_id'   => intval($id)
+    );
+}
+
+/**
+ * Does this customer have any domains that are currently unsettled?
+ *
+ * @param int $customerId Customer unique identifier
+ * @return bool
+ */
+function hasUnsettledDomains($customerId)
+{
+    foreach (getDomains($customerId) as $domain) {
+        if (!isSettled($domain['status'])) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Withdraw Apache cache permission from a customer only if every domain can be
+ * disabled in one pass.
+ *
+ * If any domain is already unsettled when the withdraw is applied, the whole
+ * operation is rolled back and false is returned so the caller can warn the
+ * reseller instead of revoking permission partially.
+ *
+ * @param int $customerId Customer unique identifier
+ * @return int|false Number of vhosts queued for disable, or false on conflict
+ */
+function withdrawCustomer($customerId)
+{
+    exec_query('START TRANSACTION');
+
+    try {
+        $count = 0;
+
+        foreach (getDomains($customerId) as $domain) {
+            $stmt = exec_query(
+                '
+                    SELECT apache_cache_id, status
+                    FROM apache_cache
+                    WHERE domain_type = ? AND domain_id = ?
+                    FOR UPDATE
+                ',
+                array($domain['domain_type'], $domain['domain_id'])
+            );
+            $row = $stmt->fetchRow(PDO::FETCH_ASSOC);
+
+            if ($row) {
+                if (!isSettled($row['status'])) {
+                    exec_query('ROLLBACK');
+                    return false;
+                }
+
+                $cacheRow = $row;
+            } else {
+                if (!isSettled($domain['status'])) {
+                    exec_query('ROLLBACK');
+                    return false;
+                }
+
+                $cacheRow = getOrCreateRow($domain, $customerId);
+            }
+
+            exec_query(
+                'UPDATE apache_cache SET enabled = ?, status = ? WHERE apache_cache_id = ?',
+                array(0, 'todisable', $cacheRow['apache_cache_id'])
+            );
+            $count++;
+        }
+
+        exec_query(
+            '
+                INSERT INTO apache_cache_perm (admin_id, allowed) VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE allowed = ?
+            ',
+            array($customerId, 0, 0)
+        );
+
+        exec_query('COMMIT');
+        return $count;
+    } catch (\Exception $e) {
+        exec_query('ROLLBACK');
+        throw $e;
+    }
+}
