@@ -73,7 +73,12 @@ class SGW_ApacheCache extends AbstractPlugin
                 // A vhost that goes away must take its cache config with it.
                 Events::onAfterDeleteDomainAlias,
                 Events::onAfterDeleteSubdomain,
-                Events::onAfterDeleteCustomer
+                Events::onAfterDeleteCustomer,
+                // A string literal, not ExtensionRegistry::EVENT: this plugin
+                // must load no SGW_GraphQL class, and therefore work exactly
+                // the same, whether or not SGW_GraphQL is installed. The event
+                // is dispatched only when it is, and only from onGraphQLRegisterExtensions.
+                'onGraphQLRegisterExtensions'
             ),
             $this
         );
@@ -203,6 +208,21 @@ class SGW_ApacheCache extends AbstractPlugin
                 $event->getParam('subdomainId')
             )
         );
+    }
+
+    /**
+     * onGraphQLRegisterExtensions event listener
+     *
+     * Only ever called when SGW_GraphQL is installed and serving a GraphQL
+     * request, so this is the only place this plugin touches a GraphQL class.
+     * See docs/EXTENSIONS.md in the SGW_GraphQL plugin.
+     *
+     * @param Event $event
+     * @return void
+     */
+    public function onGraphQLRegisterExtensions(Event $event)
+    {
+        $event->getParam('registry')->register(new GraphQL\ApacheCacheExtension());
     }
 
     /**

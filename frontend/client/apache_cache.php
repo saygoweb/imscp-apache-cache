@@ -58,33 +58,19 @@ function handleAction($adminId)
         redirectTo('apache_cache.php');
     }
 
-    $row = getOrCreateRow($domain, $adminId);
-
-    switch ($action) {
-        case 'enable':
-            exec_query(
-                'UPDATE apache_cache SET enabled = 1, status = ? WHERE apache_cache_id = ?',
-                array('toenable', $row['apache_cache_id'])
-            );
-            set_page_message(tr('Cache scheduled to be enabled for %s.', $domain['domain_name']), 'success');
-            break;
-        case 'disable':
-            exec_query(
-                'UPDATE apache_cache SET enabled = 0, status = ? WHERE apache_cache_id = ?',
-                array('todisable', $row['apache_cache_id'])
-            );
-            set_page_message(tr('Cache scheduled to be disabled for %s.', $domain['domain_name']), 'success');
-            break;
-        case 'purge':
-            exec_query(
-                'UPDATE apache_cache SET status = ? WHERE apache_cache_id = ?',
-                array('topurge', $row['apache_cache_id'])
-            );
-            set_page_message(tr('Cache scheduled to be purged for %s.', $domain['domain_name']), 'success');
-            break;
-        default:
-            showBadRequestErrorPage();
+    if (!in_array($action, array('enable', 'disable', 'purge'), true)) {
+        showBadRequestErrorPage();
     }
+
+    $row = getOrCreateRow($domain, $adminId);
+    applyAction($row, $action);
+
+    $messages = array(
+        'enable'  => tr('Cache scheduled to be enabled for %s.', $domain['domain_name']),
+        'disable' => tr('Cache scheduled to be disabled for %s.', $domain['domain_name']),
+        'purge'   => tr('Cache scheduled to be purged for %s.', $domain['domain_name'])
+    );
+    set_page_message($messages[$action], 'success');
 
     send_request();
     redirectTo('apache_cache.php');

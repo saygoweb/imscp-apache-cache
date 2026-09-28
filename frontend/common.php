@@ -174,6 +174,187 @@ function getOrCreateRow(array $domain, $adminId)
 }
 
 /**
+ * The seconds allowed for default_expire and max_expire: min, max.
+ *
+ * A minute is the shortest lifetime worth the disk write; a week is as long
+ * as a customer can go without a stale page becoming a support call.
+ *
+ * @return array array(int $min, int $max)
+ */
+function expireBounds()
+{
+    return array(60, 604800);
+}
+
+/**
+ * The bytes allowed for max_file_size: min, max.
+ *
+ * @return array array(int $min, int $max)
+ */
+function fileSizeBounds()
+{
+    return array(1024, 104857600);
+}
+
+/**
+ * Clamp a value the caller may not have bounded (a browser, or an API client,
+ * can send anything).
+ *
+ * @param mixed $value
+ * @param int $min
+ * @param int $max
+ * @return int
+ */
+function clampInt($value, $min, $max)
+{
+    return max($min, min($max, intval($value)));
+}
+
+/**
+ * Clamp the bounded fields of a full settings array, in place.
+ *
+ * Used where every field is always supplied, such as the edit form's posted
+ * values: every key must already exist in $settings.
+ *
+ * @param array $settings Full settings array, shaped like defaults()
+ * @return array
+ */
+function clampSettings(array $settings)
+{
+    list($expireMin, $expireMax) = expireBounds();
+    list($sizeMin, $sizeMax) = fileSizeBounds();
+
+    $settings['default_expire'] = clampInt($settings['default_expire'], $expireMin, $expireMax);
+    $settings['max_expire'] = clampInt($settings['max_expire'], $expireMin, $expireMax);
+    $settings['max_file_size'] = clampInt($settings['max_file_size'], $sizeMin, $sizeMax);
+
+    return $settings;
+}
+
+/**
+ * Layer a partial set of overrides onto a base settings array, clamping and
+ * coercing exactly as clampSettings() does for a full one.
+ *
+ * Used for a partial update, such as the GraphQL mutation's input: a key
+ * $overrides does not carry is left as $base already has it.
+ *
+ * @param array $overrides Only the keys the caller means to change
+ * @param array $base Existing settings (a cache row, or defaults())
+ * @return array Full settings array, shaped like defaults()
+ */
+function mergeSettings(array $overrides, array $base)
+{
+    $settings = $base;
+
+    foreach (array('enabled', 'wordpress_mode', 'static_expires', 'debug_headers', 'ignore_no_lastmod') as $flag) {
+        if (array_key_exists($flag, $overrides)) {
+            $settings[$flag] = $overrides[$flag] ? 1 : 0;
+        }
+    }
+
+    foreach (array('bypass_cookies', 'bypass_paths', 'deny_paths') as $field) {
+        if (array_key_exists($field, $overrides)) {
+            $settings[$field] = (string)$overrides[$field];
+        }
+    }
+
+    if (array_key_exists('default_expire', $overrides)) {
+        $settings['default_expire'] = $overrides['default_expire'];
+    }
+    if (array_key_exists('max_expire', $overrides)) {
+        $settings['max_expire'] = $overrides['max_expire'];
+    }
+    if (array_key_exists('max_file_size', $overrides)) {
+        $settings['max_file_size'] = $overrides['max_file_size'];
+    }
+
+    return clampSettings($settings);
+}
+
+/**
+ * Is this a settings combination the backend can be handed?
+ *
+ * @param array $settings Full settings array, shaped like defaults()
+ * @return string|null An error message, or null when the settings are valid.
+ */
+function validateSettings(array $settings)
+{
+    if ($settings['max_expire'] < $settings['default_expire']) {
+        return tr('The maximum lifetime cannot be shorter than the default lifetime.');
+    }
+
+    return null;
+}
+
+/**
+ * Save settings already merged and validated, and hand the item to the
+ * backend.
+ *
+ * Does not itself call send_request(): a caller that writes several rows in
+ * one pass, or that wants to defer waking the daemon until after a batch, is
+ * free to call it once for all of them.
+ *
+ * @param array $row Row as returned by getOrCreateRow()
+ * @param array $settings Full settings array, as clampSettings()/mergeSettings() return
+ * @return void
+ */
+function writeSettings(array $row, array $settings)
+{
+    exec_query(
+        '
+            UPDATE apache_cache SET
+                enabled = ?, wordpress_mode = ?, static_expires = ?,
+                debug_headers = ?, ignore_no_lastmod = ?, default_expire = ?,
+                max_expire = ?, max_file_size = ?, bypass_cookies = ?,
+                bypass_paths = ?, deny_paths = ?, status = ?, state = ?
+            WHERE apache_cache_id = ?
+        ',
+        array(
+            $settings['enabled'], $settings['wordpress_mode'], $settings['static_expires'],
+            $settings['debug_headers'], $settings['ignore_no_lastmod'],
+            $settings['default_expire'], $settings['max_expire'], $settings['max_file_size'],
+            $settings['bypass_cookies'], $settings['bypass_paths'], $settings['deny_paths'],
+            $settings['enabled'] ? 'tochange' : 'todisable', '',
+            $row['apache_cache_id']
+        )
+    );
+}
+
+/**
+ * Apply a list-page action to a cache row: enable, disable or purge.
+ *
+ * @param array $row Row as returned by getOrCreateRow()
+ * @param string $action One of enable, disable, purge
+ * @return void
+ * @throws \InvalidArgumentException Unknown action
+ */
+function applyAction(array $row, $action)
+{
+    switch ($action) {
+        case 'enable':
+            exec_query(
+                'UPDATE apache_cache SET enabled = 1, status = ? WHERE apache_cache_id = ?',
+                array('toenable', $row['apache_cache_id'])
+            );
+            return;
+        case 'disable':
+            exec_query(
+                'UPDATE apache_cache SET enabled = 0, status = ? WHERE apache_cache_id = ?',
+                array('todisable', $row['apache_cache_id'])
+            );
+            return;
+        case 'purge':
+            exec_query(
+                'UPDATE apache_cache SET status = ? WHERE apache_cache_id = ?',
+                array('topurge', $row['apache_cache_id'])
+            );
+            return;
+        default:
+            throw new \InvalidArgumentException('Unknown apache_cache action: ' . $action);
+    }
+}
+
+/**
  * Map an item status onto one of the theme's status icons.
  *
  * @param string|null $status
