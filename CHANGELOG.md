@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+Added GraphQL support, through the SGW_GraphQL plugin's extension hook.
+
+* `apacheCache` on `Domain`, `Subdomain` and `DomainAlias`: every setting plus
+  the plugin's own row status, so a client can poll until a change settles.
+  Reads as the plugin's defaults, not null, for a vhost never configured.
+* `apacheCacheUpdate(input: ...)`: a partial update - only the fields sent are
+  changed - with the same validation the edit page enforces.
+* `apacheCachePurge(id: ...)`: schedules the cache to be emptied.
+* No change if SGW_GraphQL is not installed: the extension is only ever loaded
+  from a single listener this plugin adds for that purpose.
+
 ## 0.2.0 (unreleased)
 Added deny paths e.g. for xmlrpc.php
 

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.6/phpunit.xsd"
+         bootstrap="bootstrap.php"
+         colors="true"
+         failOnWarning="true"
+         failOnRisky="true"
+         beStrictAboutOutputDuringTests="true">
+    <!--
+        Needs the SGW_GraphQL plugin's vendor/ and the panel bootstrapped with
+        a database; see bootstrap.php. Run with SGW_GraphQL's own PHPUnit,
+        from this plugin's directory, passing this file as the configuration.
+    -->
+    <testsuites>
+        <testsuite name="graphql">
+            <directory>.</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

@@ -2,9 +2,22 @@ name: Test
 
 # Runs the tests on an installed i-MSCP server, booted from the CI image that
 # saygoweb/imscp publishes; see that repository's
-# .github/workflows/plugin-test.yml. Locally, the same run is
+# .github/workflows/plugin-test.yml. Locally, the backend job's run is
 #
 #   ../imscp/docker/ci/plugin-test.sh .. imscp-apache-cache -- 'cd test/backend && perl all.t'
+#
+# and the GraphQL job's is
+#
+#   SETUP='[ -f /var/www/imscp-plugins/imscp-graphql/vendor/autoload.php ] || { git clone --depth 1 https://github.com/saygoweb/imscp-graphql.git /var/www/imscp-plugins/imscp-graphql && cd /var/www/imscp-plugins/imscp-graphql && php7.4 /var/www/imscp/gui/bin/composer.phar install --no-interaction --no-progress; }'
+#   ../imscp/docker/ci/plugin-test.sh --setup "$SETUP" .. imscp-apache-cache -- \
+#       'cd test/graphql && php7.4 /var/www/imscp-plugins/imscp-graphql/vendor/bin/phpunit -c phpunit.xml --do-not-cache-result'
+#
+# The GraphQL job's setup step is idempotent: on a dev machine, where the
+# plugins root already holds a real imscp-graphql checkout with vendor/
+# installed, it does nothing and that checkout is used as-is. In GitHub's CI
+# the plugins root holds only this plugin, so the clone runs. Either way, this
+# plugin's own vendor/ is never touched - imscp-graphql's is, and only when it
+# is missing.
 
 on:
   pull_request:
@@ -22,3 +35,13 @@ jobs:
     uses: saygoweb/imscp/.github/workflows/plugin-test.yml@main
     with:
       test: cd test/backend && perl all.t
+
+  test-graphql:
+    uses: saygoweb/imscp/.github/workflows/plugin-test.yml@main
+    with:
+      setup: >-
+        [ -f /var/www/imscp-plugins/imscp-graphql/vendor/autoload.php ] || {
+        git clone --depth 1 https://github.com/saygoweb/imscp-graphql.git /var/www/imscp-plugins/imscp-graphql &&
+        cd /var/www/imscp-plugins/imscp-graphql &&
+        php7.4 /var/www/imscp/gui/bin/composer.phar install --no-interaction --no-progress; }
+      test: cd test/graphql && php7.4 /var/www/imscp-plugins/imscp-graphql/vendor/bin/phpunit -c phpunit.xml --do-not-cache-result

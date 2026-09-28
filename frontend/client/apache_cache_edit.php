@@ -32,7 +32,9 @@ require_once __DIR__ . '/../common.php';
  */
 
 /**
- * Read the posted settings, clamping anything a browser could have sent.
+ * Read the posted settings. Bounded fields are not clamped here: saveSettings()
+ * clamps the whole array through clampSettings(), the same call the GraphQL
+ * mutation makes, so the two share one set of limits.
  *
  * @return array
  */
@@ -40,24 +42,18 @@ function readPostedSettings()
 {
     $defaults = defaults();
 
-    $intOption = function ($name, $min, $max) use ($defaults) {
-        $value = isset($_POST[$name]) ? intval($_POST[$name]) : $defaults[$name];
-
-        return max($min, min($max, $value));
-    };
-
     return array(
         'enabled'           => isset($_POST['enabled']) ? 1 : 0,
         'wordpress_mode'    => isset($_POST['wordpress_mode']) ? 1 : 0,
         'static_expires'    => isset($_POST['static_expires']) ? 1 : 0,
         'debug_headers'     => isset($_POST['debug_headers']) ? 1 : 0,
         'ignore_no_lastmod' => isset($_POST['ignore_no_lastmod']) ? 1 : 0,
-        // A minute is the shortest lifetime worth the disk write; a week is as
-        // long as a customer can go without a stale page becoming a support
-        // call.
-        'default_expire'    => $intOption('default_expire', 60, 604800),
-        'max_expire'        => $intOption('max_expire', 60, 604800),
-        'max_file_size'     => $intOption('max_file_size', 1024, 104857600),
+        'default_expire'    => isset($_POST['default_expire'])
+            ? intval($_POST['default_expire']) : $defaults['default_expire'],
+        'max_expire'        => isset($_POST['max_expire'])
+            ? intval($_POST['max_expire']) : $defaults['max_expire'],
+        'max_file_size'     => isset($_POST['max_file_size'])
+            ? intval($_POST['max_file_size']) : $defaults['max_file_size'],
         'bypass_cookies'    => isset($_POST['bypass_cookies'])
             ? clean_input($_POST['bypass_cookies']) : '',
         'bypass_paths'      => isset($_POST['bypass_paths'])
@@ -77,35 +73,16 @@ function readPostedSettings()
 function saveSettings(array $domain, $adminId)
 {
     $row = getOrCreateRow($domain, $adminId);
-    $settings = readPostedSettings();
+    $settings = clampSettings(readPostedSettings());
 
-    if ($settings['max_expire'] < $settings['default_expire']) {
-        set_page_message(
-            tr('The maximum lifetime cannot be shorter than the default lifetime.'), 'error'
-        );
+    $error = validateSettings($settings);
+    if ($error !== null) {
+        set_page_message($error, 'error');
 
         return;
     }
 
-    exec_query(
-        '
-            UPDATE apache_cache SET
-                enabled = ?, wordpress_mode = ?, static_expires = ?,
-                debug_headers = ?, ignore_no_lastmod = ?, default_expire = ?,
-                max_expire = ?, max_file_size = ?, bypass_cookies = ?,
-                bypass_paths = ?, deny_paths = ?, status = ?, state = ?
-            WHERE apache_cache_id = ?
-        ',
-        array(
-            $settings['enabled'], $settings['wordpress_mode'], $settings['static_expires'],
-            $settings['debug_headers'], $settings['ignore_no_lastmod'],
-            $settings['default_expire'], $settings['max_expire'], $settings['max_file_size'],
-            $settings['bypass_cookies'], $settings['bypass_paths'],
-            $settings['deny_paths'],
-            $settings['enabled'] ? 'tochange' : 'todisable', '',
-            $row['apache_cache_id']
-        )
-    );
+    writeSettings($row, $settings);
 
     send_request();
     set_page_message(tr('Cache settings scheduled for update.'), 'success');

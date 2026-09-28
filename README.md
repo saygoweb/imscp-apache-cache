@@ -117,6 +117,74 @@ purging one domain is a directory removal and cannot disturb another. Debian's
 plugin installs its own `imscp-htcacheclean` timer that runs one pass per
 domain cache. Both the root and the size limit are in `config.php`.
 
+## GraphQL API
+
+When [SGW_GraphQL](https://github.com/saygoweb/imscp-graphql) is installed
+alongside this plugin, this plugin adds an `apacheCache` field to `Domain`,
+`Subdomain` and `DomainAlias`, and two mutations, through SGW_GraphQL's
+extension hook (see its `docs/EXTENSIONS.md`). Nothing changes when
+SGW_GraphQL is not installed: the plugin adds no dependency on it, and no
+GraphQL class is ever touched outside the one listener that registers the
+extension.
+
+```graphql
+query {
+  node(id: "RG9tYWluOjE") {
+    ... on Domain {
+      name
+      apacheCache {
+        enabled
+        wordpressMode
+        defaultExpire
+        maxExpire
+        denyPaths
+        provisioning { state settled }
+      }
+    }
+  }
+}
+```
+
+A vhost the plugin has never been asked to configure reads as the defaults it
+would be given - the same defaults `defaults()` gives the list page - rather
+than `null`: "not set up yet" and "set up with the defaults" are the same
+thing here, and a client should not have to special-case it.
+
+```graphql
+mutation {
+  apacheCacheUpdate(input: {
+    id: "RG9tYWluOjE"
+    enabled: true
+    wordpressMode: true
+    defaultExpire: 300
+    maxExpire: 86400
+    denyPaths: "xmlrpc.php"
+  }) {
+    name
+    ... on Domain { apacheCache { enabled provisioning { state } } }
+  }
+}
+
+mutation {
+  apacheCachePurge(id: "RG9tYWluOjE") { name }
+}
+```
+
+`apacheCacheUpdate`'s input is a partial update: every field but `id` is
+optional, and an omitted one is left as it was. The same rules the edit page
+enforces apply - for example, the maximum lifetime may not be shorter than the
+default one - and the same per-customer permission a reseller can withdraw
+(`apache_cache_perm`) is enforced as `FEATURE_UNAVAILABLE`.
+
+**Not covered by this API**: a reseller granting or withdrawing the feature
+for one of their customers, or the bulk enable/disable across a customer's
+domains that the reseller page offers (`withdrawCustomer()` in
+`frontend/common.php`). SGW_GraphQL's `ExtensionContext` has no
+customer-targeting helper - only `targetVirtualHost()`, for a single vhost -
+so there is nothing in the current extension API to resolve a reseller's own
+customer and check "is this my customer" against. That is a gap in the
+extension API, not a decision to leave the reseller page's actions out.
+
 ## Development
 
 The `tools/` and `test/` directories are development-only and are excluded from
