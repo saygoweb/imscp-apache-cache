@@ -11,3 +11,5 @@ makefile.json
 upload-exclude.txt
 .vagrant
 log
+coverage
+codecov.yml

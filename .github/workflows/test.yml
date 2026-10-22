@@ -19,6 +19,12 @@ name: Test
 # plugin's own vendor/ is never touched - imscp-graphql's is, and only when it
 # is missing.
 
+# The GraphQL job is the steps of plugin-test.yml written out rather than
+# called: a reusable workflow's job ends with its container, and the coverage
+# report it leaves behind would never reach an upload step. Keep the two in
+# step. Its PHPUnit run measures coverage with PCOV and uploads it to Codecov;
+# the Perl backend tests are not measured.
+
 on:
   pull_request:
   push:
@@ -29,6 +35,8 @@ on:
 permissions:
   contents: read
   packages: read
+  # Codecov authenticates the upload by OIDC, so no token secret is needed.
+  id-token: write
 
 jobs:
   test:
@@ -37,11 +45,61 @@ jobs:
       test: cd test/backend && perl all.t
 
   test-graphql:
-    uses: saygoweb/imscp/.github/workflows/plugin-test.yml@main
-    with:
-      setup: >-
-        [ -f /var/www/imscp-plugins/imscp-graphql/vendor/autoload.php ] || {
-        git clone --depth 1 https://github.com/saygoweb/imscp-graphql.git /var/www/imscp-plugins/imscp-graphql &&
-        cd /var/www/imscp-plugins/imscp-graphql &&
-        php7.4 /var/www/imscp/gui/bin/composer.phar install --no-interaction --no-progress; }
-      test: cd test/graphql && php7.4 /var/www/imscp-plugins/imscp-graphql/vendor/bin/phpunit -c phpunit.xml --do-not-cache-result
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    env:
+      IMAGE: ghcr.io/saygoweb/imscp-ci:bookworm
+      PLUGIN_DIR: plugins/${{ github.event.repository.name }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: plugins/${{ github.event.repository.name }}
+
+      - uses: actions/checkout@v7
+        with:
+          repository: saygoweb/imscp
+          path: imscp
+          sparse-checkout: docker/ci
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the CI image
+        run: docker pull "$IMAGE"
+
+      # PCOV, the coverage driver, is not in the image; sury, which the image
+      # already uses for PHP 7.4, has it.
+      - name: Test
+        env:
+          IMSCP_CI_IMAGE: ${{ env.IMAGE }}
+          SETUP: >-
+            apt-get update -qq &&
+            apt-get install -y -qq php7.4-pcov &&
+            { [ -f /var/www/imscp-plugins/imscp-graphql/vendor/autoload.php ] || {
+            git clone --depth 1 https://github.com/saygoweb/imscp-graphql.git /var/www/imscp-plugins/imscp-graphql &&
+            cd /var/www/imscp-plugins/imscp-graphql &&
+            php7.4 /var/www/imscp/gui/bin/composer.phar install --no-interaction --no-progress; }; }
+          TEST: >-
+            cd test/graphql &&
+            php7.4 -d pcov.enabled=1 -d pcov.directory=../.. /var/www/imscp-plugins/imscp-graphql/vendor/bin/phpunit
+            -c phpunit.xml --do-not-cache-result --coverage-clover ../../coverage/graphql.xml
+        run: |
+          imscp/docker/ci/plugin-test.sh --setup "$SETUP" \
+              plugins "${{ github.event.repository.name }}" -- "$TEST"
+
+      # No root_dir: the CLI resolves it against working-directory, so the
+      # same path given to both lists no repository files, and Codecov then
+      # matches nothing in the reports (REPORT_EMPTY).
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          working-directory: ${{ env.PLUGIN_DIR }}
+          files: coverage/graphql.xml
+          disable_search: true
+          fail_ci_if_error: false
