@@ -71,8 +71,16 @@ unlike($conf, qr/HTTP_COOKIE/,
 # internal redirect that a pretty permalink triggers.
 unlike($conf, qr/^CacheDisable/m,
     'no CacheDisable, which a rewritten URL would slip past');
-like($conf, qr{^<IfModule mod_rewrite\.c>\n\s*RewriteEngine On\n\s*RewriteCond %\{REQUEST_FILENAME\} !-f\n\s*RewriteCond %\{REQUEST_FILENAME\} !-d\n\s*RewriteCond %\{QUERY_STRING\} !__imscp_cache_key=\n\s*RewriteCond %\{REQUEST_URI\} !\^/index\\\.php\$\n\s*RewriteRule \^ %\{REQUEST_URI\}\?__imscp_cache_key=%\{REQUEST_URI\} \[L,QSA,NE\]$}m,
+like($conf, qr{^<IfModule mod_rewrite\.c>\n\s*RewriteEngine On\n\s*RewriteCond %\{REQUEST_URI\} !\^/\\\.well-known/\n\s*RewriteCond %\{REQUEST_FILENAME\} !-f\n\s*RewriteCond %\{REQUEST_FILENAME\} !-d\n\s*RewriteCond %\{QUERY_STRING\} !__imscp_cache_key=\n\s*RewriteCond %\{REQUEST_URI\} !\^/index\\\.php\$\n\s*RewriteRule \^ %\{REQUEST_URI\}\?__imscp_cache_key=%\{REQUEST_URI\} \[L,QSA,NE\]$}m,
     'pretty permalinks keep a distinct synthetic cache key before the front-controller rewrite');
+
+# The rewrite runs in the vhost ahead of mod_alias and, matching, skips it. The
+# ACME challenge is served by SGW_LetsEncrypt's server-wide Alias from a webroot
+# outside the document root, so a rewritten challenge 404s and the certificate
+# cannot renew: the challenge path must be excluded before the rule.
+my ($rewrite) = $conf =~ m{(<IfModule mod_rewrite\.c>.*?</IfModule>)}s;
+like($rewrite // '', qr{RewriteCond %\{REQUEST_URI\} !\^/\\\.well-known/\n(?:\s*RewriteCond[^\n]*\n)*\s*RewriteRule }s,
+    'the ACME challenge path is left out of the cache-key rewrite, so it reaches the challenge Alias');
 
 # Names reach the config quotemeta-escaped, so assertions about which names are
 # present read the escapes back out rather than spelling them out.

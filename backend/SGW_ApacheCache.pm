@@ -427,10 +427,16 @@ EOF
     }
 
     if ( $row->{'wordpress_mode'} ) {
+        # The rule runs in the vhost, ahead of mod_alias, and a match skips
+        # mod_alias altogether. The ACME challenge path has to be left alone:
+        # SGW_LetsEncrypt serves it from a webroot outside the document root
+        # through a server-wide Alias, which a rewritten request never reaches,
+        # so the challenge would 404 and the certificate fail to renew.
         $conf .= <<'EOF';
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    RewriteCond %{REQUEST_URI} !^/\.well-known/
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{QUERY_STRING} !__imscp_cache_key=

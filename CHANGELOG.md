@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2
+
+* WordPress mode no longer breaks Let's Encrypt renewals. Its cache-key rewrite
+  runs in the vhost, ahead of mod_alias, and caught `/.well-known/acme-challenge/`
+  too. SGW_LetsEncrypt 2.2.0 serves that path from a webroot through a
+  server-wide Alias, so the challenge returned 404 and the certificate could not
+  renew. The rewrite now leaves `/.well-known/` alone. Updating the plugin
+  regenerates every domain's snippet, so existing sites are fixed by the update.
+
 ## 0.3.0 (unreleased)
 
 Added GraphQL support, through the SGW_GraphQL plugin's extension hook.
